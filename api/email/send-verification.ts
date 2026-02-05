@@ -1,5 +1,4 @@
 import { Resend } from 'resend';
-import { v4 as uuidv4 } from 'uuid';
 
 const resend = new Resend(process.env.RESEND_API_KEY!);
 
@@ -18,8 +17,10 @@ export default async function handler(request: Request) {
       );
     }
 
-    // Generate 6-digit code
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    // Generate 6-digit code using Web Crypto API (Edge compatible)
+    const array = new Uint32Array(1);
+    crypto.getRandomValues(array);
+    const code = (100000 + (array[0] % 900000)).toString();
     
     let subject = 'Your RANDO Verification Code';
     let html = `
@@ -58,7 +59,7 @@ export default async function handler(request: Request) {
     }
 
     await resend.emails.send({
-      from: 'RANDO <hello@yourdomain.com>',
+      from: 'RANDO <hello@deskchatapp.com>',
       to: email,
       subject,
       html,
