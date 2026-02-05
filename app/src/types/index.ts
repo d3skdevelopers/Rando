@@ -4,13 +4,19 @@ export interface User {
   username: string;
   tier: 'free' | 'premium' | 'student';
   age_verified: boolean;
+  email_verified: boolean; // ✅ Added this missing property
   preferences: Record<string, any>;
   stripe_customer_id?: string;
   subscription_status?: string;
+  banned?: boolean; // ✅ Added this missing property (optional)
+  ban_reason?: string;
+  banned_at?: string;
   created_at: string;
   last_seen?: string;
+  updated_at?: string; // ✅ Added for consistency with DB schema
 }
 
+// The rest of your interfaces (ChatSession, Message, etc.) remain exactly the same
 export interface ChatSession {
   id: string;
   user1_id: string;
