@@ -1,6 +1,12 @@
 import { supabase } from './client';
 import { Message, ChatSession } from '@/types';
 
+// Define type for presence data
+interface PresenceData {
+  user_id: string;
+  online_at: string;
+}
+
 export class RealtimeService {
   private channels: Map<string, any> = new Map();
 
@@ -55,7 +61,8 @@ export class RealtimeService {
         () => {
           const state = channel.presenceState();
           const userIds = Object.keys(state).map((key) => {
-            return state[key][0]?.user_id;
+            // FIXED: Use type assertion for presence data
+            return (state[key] as PresenceData[])[0]?.user_id;
           }).filter(Boolean);
           callback(userIds);
         }
