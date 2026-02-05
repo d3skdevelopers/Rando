@@ -61,8 +61,8 @@ export class RealtimeService {
         () => {
           const state = channel.presenceState();
           const userIds = Object.keys(state).map((key) => {
-            // FIXED: Use type assertion for presence data
-            return (state[key] as PresenceData[])[0]?.user_id;
+            // FIXED: Double type assertion to handle presence data
+            return ((state[key] as unknown) as PresenceData[])[0]?.user_id;
           }).filter(Boolean);
           callback(userIds);
         }
