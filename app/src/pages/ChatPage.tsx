@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { RealtimeChannel } from '@supabase/supabase-js';
 import { useAuth } from '@/hooks/useAuth';
 import ChatInterface from '@/components/ChatInterface';
 import Matchmaking from '@/components/Matchmaking';
@@ -12,6 +13,7 @@ export default function ChatPage() {
   const [currentSession, setCurrentSession] = useState<string | null>(null);
   const [showVerification, setShowVerification] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
+  const channelRef = useRef<RealtimeChannel | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -21,10 +23,20 @@ export default function ChatPage() {
       }
 
       // Subscribe to online users
-      const channel = realtimeService.subscribeToOnlineUsers(setOnlineUsers);
+      realtimeService.subscribeToOnlineUsers(setOnlineUsers)
+        .then(channel => {
+          channelRef.current = channel;
+        })
+        .catch(error => {
+          console.error('Failed to subscribe to online users:', error);
+        });
 
+      // Cleanup function
       return () => {
-        channel?.unsubscribe();
+        if (channelRef.current) {
+          channelRef.current.unsubscribe();
+          channelRef.current = null;
+        }
       };
     }
   }, [user]);
@@ -40,6 +52,12 @@ export default function ChatPage() {
   };
 
   const handleSignOut = async () => {
+    // Unsubscribe from channel before signing out
+    if (channelRef.current) {
+      channelRef.current.unsubscribe();
+      channelRef.current = null;
+    }
+    
     await signOut();
     window.location.href = '/';
   };
