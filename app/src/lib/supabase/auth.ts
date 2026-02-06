@@ -3,32 +3,61 @@ import { User } from '@/types';
 
 export async function signUp(email: string, password: string, username: string) {
   try {
-    // 1. First create auth user
+    // 1. Create auth user WITHOUT email confirmation
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: { username },
-        emailRedirectTo: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : undefined,
+        // Disable email confirmation for now
+        emailRedirectTo: null,
       },
     });
 
     if (authError) {
-      console.error('Auth creation error:', authError);
+      console.error('Auth error:', authError);
       throw authError;
     }
 
-    // 2. Wait a moment for auth to propagate (CRITICAL for RLS)
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    console.log('Auth data:', authData);
 
-    // 3. Get session to ensure auth is ready
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    if (!authData.user || !session) {
-      throw new Error('User creation failed - no user or session returned');
+    // 2. If no user returned, check session
+    if (!authData.user) {
+      // Try to get current session
+      const { data: { session } } = await supabase.auth.getSession();
+      console.log('Session after signup:', session);
+      
+      if (!session) {
+        throw new Error('Auth user created but no session returned. Check Supabase Auth configuration.');
+      }
+      
+      // Use session user instead
+      const userId = session.user.id;
+      
+      // 3. Create user profile
+      const { error: profileError } = await supabase
+        .from('users')
+        .insert({
+          id: userId,
+          email,
+          username,
+          tier: 'free',
+          age_verified: false,
+          email_verified: false,
+          preferences: {},
+          created_at: new Date().toISOString(),
+        });
+
+      if (profileError) {
+        console.error('Profile error:', profileError);
+        throw profileError;
+      }
+
+      await trackAnalytics('sign_up', { email, username, method: 'email' });
+      return { success: true, user: session.user };
     }
 
-    // 4. Now insert into users table with explicit auth header
+    // 4. Original flow if user is returned
     const { error: profileError } = await supabase
       .from('users')
       .insert({
@@ -42,44 +71,13 @@ export async function signUp(email: string, password: string, username: string) 
         created_at: new Date().toISOString(),
       });
 
-    if (profileError) {
-      console.error('Profile insertion error:', profileError);
-      
-      // If profile insertion fails due to RLS, add debug info
-      if (profileError.message.includes('row-level security') || profileError.code === '42501') {
-        console.log('RLS Error - User ID:', authData.user.id, 'Session exists:', !!session);
-        
-        // Try with service role key as fallback
-        const serviceResponse = await fetch('/api/auth/create-user', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_id: authData.user.id,
-            email,
-            username,
-          }),
-        });
-        
-        if (serviceResponse.ok) {
-          console.log('User created via service role fallback');
-        } else {
-          throw new Error('RLS policy blocked user creation. Check RLS policies in Supabase.');
-        }
-      } else {
-        throw profileError;
-      }
-    }
+    if (profileError) throw profileError;
 
-    // 5. Track analytics
-    await trackAnalytics('sign_up', {
-      email,
-      username,
-      method: 'email',
-    });
-
+    await trackAnalytics('sign_up', { email, username, method: 'email' });
     return { success: true, user: authData.user };
+    
   } catch (error: any) {
-    console.error('Complete signup error:', error);
+    console.error('Signup error:', error);
     return { success: false, error: error.message };
   }
 }
@@ -207,7 +205,7 @@ export async function createUserViaServiceRole(userId: string, email: string, us
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: userId, email, username }),
     });
-    
+
     return response.ok;
   } catch (error) {
     console.error('Service role creation failed:', error);
