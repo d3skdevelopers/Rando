@@ -16,6 +16,13 @@ export interface User {
   updated_at?: string;
 }
 
+// Add GuestUser interface for anonymous users
+export interface GuestUser {
+  id: string;
+  username: string;
+  // No other properties needed for guests
+}
+
 export interface ChatSession {
   id: string;
   user1_id: string;
@@ -39,7 +46,8 @@ export interface Message {
   content_type: 'text' | 'image';
   moderated: boolean;
   created_at: string;
-  sender?: User;
+  // UPDATED: Accept both User and GuestUser
+  sender?: User | GuestUser;
   // ADDED FOR GUEST SUPPORT
   is_guest?: boolean;
   sender_name?: string;
@@ -57,7 +65,7 @@ export interface MatchmakingQueue {
   username?: string;
 }
 
-// ... rest of your interfaces remain the same
+// ... rest of interfaces remain the same
 export interface Report {
   id: string;
   reporter_id: string;
