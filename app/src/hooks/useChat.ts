@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { realtimeService } from '@/lib/supabase/realtime';
 import { moderateContent } from '@/lib/moderation/perspective-api';
-import { Message, ChatSession } from '@/types';
+import { Message, ChatSession, GuestUser } from '@/types';
 import { trackAnalytics } from '@/lib/supabase/auth';
 
 export function useChat(sessionId?: string) {
@@ -26,14 +26,14 @@ export function useChat(sessionId?: string) {
       
       // Transform messages to include guest data
       const transformedMessages = (data || []).map((msg: any) => {
-        // If it's a guest message, create a mock sender object
+        // If it's a guest message, create a guest sender object
         if (msg.is_guest && !msg.sender) {
           return {
             ...msg,
             sender: {
               id: msg.sender_id,
               username: msg.sender_name || 'Anonymous'
-            }
+            } as GuestUser
           };
         }
         return msg;
@@ -169,19 +169,19 @@ export function useChat(sessionId?: string) {
     fetchSession();
 
     // Subscribe to real-time messages
-    const channel = realtimeService.subscribeToMessages(sessionId, (newMessage) => {
-      // Transform guest messages
+    const channel = realtimeService.subscribeToMessages(sessionId, (newMessage: any) => {
+      // For guest messages, create a GuestUser object
       if (newMessage.is_guest && !newMessage.sender) {
         newMessage.sender = {
           id: newMessage.sender_id,
           username: newMessage.sender_name || 'Anonymous'
-        };
+        } as GuestUser;
       }
-      setMessages((prev) => [...prev, newMessage]);
+      setMessages((prev) => [...prev, newMessage as Message]);
     });
 
     // Subscribe to session updates
-    const sessionChannel = realtimeService.subscribeToSession(sessionId, (updatedSession) => {
+    const sessionChannel = realtimeService.subscribeToSession(sessionId, (updatedSession: any) => {
       // Ensure guest properties exist
       const transformedSession: ChatSession = {
         ...updatedSession,
