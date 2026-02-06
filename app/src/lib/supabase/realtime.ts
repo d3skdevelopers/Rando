@@ -1,12 +1,6 @@
+// app/src/lib/supabase/realtime.ts
 import { supabase } from './client';
 import { Message, ChatSession } from '@/types';
-
-// Define type for presence data
-interface PresenceData {
-  user_id: string;
-  online_at: string;
-  username?: string;
-}
 
 export class RealtimeService {
   private channels: Map<string, any> = new Map();
@@ -55,21 +49,21 @@ export class RealtimeService {
 
   async subscribeToOnlineUsers(callback: (count: number) => void) {
     try {
-      // Simple: Count active users in matchmaking queue (people searching)
+      // Count active users in matchmaking queue
       const { count, error } = await supabase
         .from('matchmaking_queue')
         .select('*', { count: 'exact', head: true });
 
       if (error) {
         console.error('Error counting online users:', error);
-        callback(1); // Fallback to 1
+        callback(1);
         return null;
       }
 
       console.log(`Online users (searching): ${count || 0}`);
       callback(count || 0);
 
-      // Also subscribe to real-time updates of the queue
+      // Subscribe to real-time updates
       const channel = supabase
         .channel('online-count')
         .on(
@@ -80,7 +74,6 @@ export class RealtimeService {
             table: 'matchmaking_queue',
           },
           async () => {
-            // Re-fetch count when queue changes
             const { count: newCount } = await supabase
               .from('matchmaking_queue')
               .select('*', { count: 'exact', head: true });
@@ -96,19 +89,8 @@ export class RealtimeService {
 
     } catch (error) {
       console.error('Failed to subscribe to online users:', error);
-      callback(1); // Fallback
+      callback(1);
       return null;
-    }
-  }
-
-  async updatePresence(userId: string, username?: string) {
-    const channel = this.channels.get('online-users');
-    if (channel) {
-      await channel.track({
-        user_id: userId,
-        username: username,
-        online_at: new Date().toISOString()
-      });
     }
   }
 
