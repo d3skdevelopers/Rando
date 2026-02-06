@@ -10,15 +10,16 @@ import toast from 'react-hot-toast';
 export default function LandingPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const [showAuth, setShowAuth] = useState(false);
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Quick anonymous access
+  // Quick anonymous chat
   const handleQuickChat = () => {
-    router.push('/chat');
+    router.push('/chat/guest');
   };
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -34,7 +35,7 @@ export default function LandingPage() {
       if (isLogin) {
         result = await signIn(email, password);
       } else {
-        result = await signUp(email, password, username || `user_${Date.now()}`);
+        result = await signUp(email, password, username || `user_${Date.now().toString().slice(-6)}`);
       }
 
       if (result.success) {
@@ -53,45 +54,58 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen gradient-bg flex flex-col">
       {/* Simple Header */}
-      <div className="text-center pt-16 px-4">
-        <h1 className="text-6xl md:text-8xl font-bold mb-4 bg-gradient-to-r from-gold via-white to-gold bg-clip-text text-transparent">
+      <div className="text-center pt-20 px-4">
+        <h1 className="text-7xl md:text-9xl font-bold mb-6 bg-gradient-to-r from-gold via-white to-gold bg-clip-text text-transparent">
           RANDO
         </h1>
-        <p className="text-xl text-gray-300 mb-8">Chat with random people. 100% free.</p>
+        <p className="text-2xl text-gray-300 mb-2">Chat with random people</p>
+        <p className="text-gray-400">100% free • Anonymous option</p>
       </div>
 
-      {/* Main Content - Focus on Quick Action */}
-      <div className="flex-1 container mx-auto px-4 flex flex-col items-center justify-center">
-        {/* Quick Chat Button (Big & Prominent) */}
-        <div className="text-center mb-12">
+      {/* Main Action */}
+      <div className="flex-1 flex flex-col items-center justify-center px-4">
+        {/* Big Chat Button */}
+        <div className="text-center mb-8 w-full max-w-2xl">
           <button
             onClick={handleQuickChat}
-            className="btn-primary text-2xl px-12 py-6 rounded-2xl shadow-2xl hover:scale-105 transition-transform"
+            disabled={loading}
+            className="bg-gradient-to-r from-gold to-coral text-dark text-3xl font-bold px-12 py-6 rounded-2xl shadow-2xl hover:scale-105 transition-transform disabled:opacity-50 w-full"
           >
-            🎯 Start Random Chat Now
+            {loading ? 'Loading...' : '🎯 START RANDOM CHAT'}
           </button>
-          <p className="text-gray-400 mt-4">No account needed • Instant matching</p>
+          <p className="text-gray-400 mt-4">No account needed • Instant matching • Free forever</p>
         </div>
 
-        {/* Optional Auth (Collapsible) */}
-        <div className="w-full max-w-md">
-          <div className="text-center mb-6">
-            <button
-              onClick={() => setIsLogin(!isLogin)}
-              className="text-gold hover:text-gold/80 text-lg"
-            >
-              {isLogin ? 'Need an account? Sign up' : 'Already have an account? Login'}
-            </button>
-          </div>
+        {/* Optional Auth */}
+        <div className="w-full max-w-md mt-8">
+          {!showAuth ? (
+            <div className="text-center">
+              <button
+                onClick={() => setShowAuth(true)}
+                className="text-gold hover:text-gold/80 text-lg"
+              >
+                Or create account to save chats & get features
+              </button>
+            </div>
+          ) : (
+            <div className="glass rounded-2xl p-6">
+              <div className="flex border-b border-gray-800 mb-6">
+                <button
+                  onClick={() => setIsLogin(true)}
+                  className={`flex-1 py-3 font-bold ${isLogin ? 'text-gold border-b-2 border-gold' : 'text-gray-400'}`}
+                >
+                  Login
+                </button>
+                <button
+                  onClick={() => setIsLogin(false)}
+                  className={`flex-1 py-3 font-bold ${!isLogin ? 'text-gold border-b-2 border-gold' : 'text-gray-400'}`}
+                >
+                  Sign Up
+                </button>
+              </div>
 
-          <div className="glass rounded-2xl p-6">
-            <h3 className="text-xl font-bold mb-4 text-center">
-              {isLogin ? 'Login to Save Chats' : 'Sign Up for Profile'}
-            </h3>
-            
-            <form onSubmit={handleAuth} className="space-y-4">
-              {!isLogin && (
-                <div>
+              <form onSubmit={handleAuth} className="space-y-4">
+                {!isLogin && (
                   <input
                     type="text"
                     value={username}
@@ -99,10 +113,8 @@ export default function LandingPage() {
                     placeholder="Username (optional)"
                     className="input-field"
                   />
-                </div>
-              )}
+                )}
 
-              <div>
                 <input
                   type="email"
                   value={email}
@@ -111,59 +123,42 @@ export default function LandingPage() {
                   className="input-field"
                   required
                 />
-              </div>
 
-              <div>
                 <input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Password"
+                  placeholder="Password (min 6 chars)"
                   className="input-field"
                   required
                   minLength={6}
                 />
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="btn-secondary w-full py-3"
+                >
+                  {loading ? 'Loading...' : isLogin ? 'Login' : 'Sign Up'}
+                </button>
+              </form>
+
+              <div className="mt-4 text-center">
+                <button
+                  onClick={() => setShowAuth(false)}
+                  className="text-gray-400 hover:text-white text-sm"
+                >
+                  ← Back to quick chat
+                </button>
               </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="btn-secondary w-full py-3"
-              >
-                {loading ? 'Loading...' : isLogin ? 'Login' : 'Sign Up'}
-              </button>
-            </form>
-
-            <div className="mt-6 text-center text-sm text-gray-400">
-              <p>Sign up to: Save favorites • Get notifications • Earn badges</p>
             </div>
-          </div>
-        </div>
-
-        {/* Quick Stats */}
-        <div className="mt-12 grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-          <div>
-            <div className="text-2xl font-bold text-gold">24/7</div>
-            <div className="text-sm text-gray-400">Active</div>
-          </div>
-          <div>
-            <div className="text-2xl font-bold text-gold">100%</div>
-            <div className="text-sm text-gray-400">Free</div>
-          </div>
-          <div>
-            <div className="text-2xl font-bold text-gold">Safe</div>
-            <div className="text-sm text-gray-400">Chat</div>
-          </div>
-          <div>
-            <div className="text-2xl font-bold text-gold">Global</div>
-            <div className="text-sm text-gray-400">Users</div>
-          </div>
+          )}
         </div>
       </div>
 
-      {/* Minimal Footer */}
-      <div className="py-8 text-center text-gray-500 text-sm">
-        <p>Chat randomly • Meet authentically • No subscriptions ever</p>
+      {/* Simple Footer */}
+      <div className="py-8 text-center text-gray-500 text-sm px-4">
+        <p>Chat randomly • No subscriptions • Safe & moderated</p>
       </div>
     </div>
   );
