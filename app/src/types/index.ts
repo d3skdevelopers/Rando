@@ -4,19 +4,18 @@ export interface User {
   username: string;
   tier: 'free' | 'premium' | 'student';
   age_verified: boolean;
-  email_verified: boolean; // ✅ Added this missing property
+  email_verified: boolean;
   preferences: Record<string, any>;
   stripe_customer_id?: string;
   subscription_status?: string;
-  banned?: boolean; // ✅ Added this missing property (optional)
+  banned?: boolean;
   ban_reason?: string;
   banned_at?: string;
   created_at: string;
   last_seen?: string;
-  updated_at?: string; // ✅ Added for consistency with DB schema
+  updated_at?: string;
 }
 
-// The rest of your interfaces (ChatSession, Message, etc.) remain exactly the same
 export interface ChatSession {
   id: string;
   user1_id: string;
@@ -26,6 +25,10 @@ export interface ChatSession {
   ended_at?: string;
   user1?: User;
   user2?: User;
+  // ADDED FOR GUEST SUPPORT
+  is_guest1?: boolean;
+  is_guest2?: boolean;
+  total_messages?: number;
 }
 
 export interface Message {
@@ -37,6 +40,9 @@ export interface Message {
   moderated: boolean;
   created_at: string;
   sender?: User;
+  // ADDED FOR GUEST SUPPORT
+  is_guest?: boolean;
+  sender_name?: string;
 }
 
 export interface MatchmakingQueue {
@@ -46,8 +52,12 @@ export interface MatchmakingQueue {
   looking_for: 'text' | 'video';
   entered_at: string;
   user?: User;
+  // ADDED FOR GUEST SUPPORT
+  is_guest?: boolean;
+  username?: string;
 }
 
+// ... rest of your interfaces remain the same
 export interface Report {
   id: string;
   reporter_id: string;
