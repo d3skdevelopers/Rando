@@ -1,10 +1,9 @@
-// app/src/pages/LandingPage.tsx
+// app/src/pages/LandingPage.tsx - UPDATED
 'use client';
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase/client';
 import { signIn, signUp } from '@/lib/supabase/auth';
 import toast from 'react-hot-toast';
 
@@ -18,38 +17,20 @@ export default function LandingPage() {
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Quick anonymous chat
-  const handleQuickChat = async () => {
+  // Quick anonymous chat - FIXED
+  const handleQuickChat = () => {
     setLoading(true);
-    try {
-      // Generate guest ID
-      const guestId = `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      const guestUsername = `Guest_${Math.random().toString(36).substr(2, 6)}`;
-      
-      // Store in localStorage
-      localStorage.setItem('rando_guest_id', guestId);
-      localStorage.setItem('rando_guest_username', guestUsername);
-      
-      // Try to save in database (optional)
-      try {
-        await supabase.from('guest_sessions').insert({
-          id: guestId,
-          username: guestUsername,
-          created_at: new Date().toISOString(),
-          last_active: new Date().toISOString()
-        });
-      } catch (dbError) {
-        console.log('Guest session not saved to DB, using localStorage only');
-      }
-      
-      toast.success('Starting anonymous chat...');
-      router.push('/chat');
-    } catch (error) {
-      toast.error('Failed to start chat');
-      console.error('Guest chat error:', error);
-    } finally {
-      setLoading(false);
-    }
+    
+    // Generate guest ID
+    const guestId = `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const guestUsername = `Guest_${Math.random().toString(36).substr(2, 6)}`;
+    
+    // Store in localStorage
+    localStorage.setItem('rando_guest_id', guestId);
+    localStorage.setItem('rando_guest_username', guestUsername);
+    
+    toast.success('Starting anonymous chat...');
+    router.push('/chat');
   };
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -61,21 +42,25 @@ export default function LandingPage() {
 
     setLoading(true);
     try {
-      let result;
       if (isLogin) {
-        result = await signIn(email, password);
+        const result = await signIn(email, password);
+        if (result.success) {
+          toast.success('Welcome back!');
+          router.push('/chat');
+        } else {
+          toast.error(result.error || 'Authentication failed');
+        }
       } else {
-        result = await signUp(email, password, username || `user_${Date.now().toString().slice(-6)}`);
-      }
-
-      if (result.success) {
-        toast.success(isLogin ? 'Welcome back!' : 'Account created!');
-        router.push('/chat');
-      } else {
-        toast.error(result.error || 'Authentication failed');
+        const result = await signUp(email, password, username || `user_${Date.now().toString().slice(-6)}`);
+        if (result.success) {
+          toast.success('Account created!');
+          router.push('/chat');
+        } else {
+          toast.error(result.error || 'Sign up failed');
+        }
       }
     } catch (error: any) {
-      toast.error(error.message);
+      toast.error(error.message || 'Something went wrong');
     } finally {
       setLoading(false);
     }
