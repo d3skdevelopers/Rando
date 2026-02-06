@@ -190,14 +190,22 @@ export default function ChatInterface({
             )}
           </div>
         ) : (
-          messages.map((message) => (
-<MessageBubble
-  key={message.id}
-  message={message}
-  isOwn={message.sender_id === user?.id || (isGuest && message.sender_id === 'guest')}
-  displayName={isGuest ? (message.sender_id === user?.id ? 'You' : 'Stranger') : undefined}
-/>
-          ))
+          messages.map((message) => {
+            // Determine display name for guest mode
+            let bubbleDisplayName: string | undefined;
+            if (isGuest) {
+              bubbleDisplayName = message.sender_id === user?.id ? 'You' : 'Stranger';
+            }
+            
+            return (
+              <MessageBubble
+                key={message.id}
+                message={message}
+                isOwn={message.sender_id === user?.id || isGuest}
+                displayName={bubbleDisplayName}
+              />
+            );
+          })
         )}
         <div ref={messagesEndRef} />
       </div>
