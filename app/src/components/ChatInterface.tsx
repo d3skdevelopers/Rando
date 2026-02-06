@@ -1,4 +1,4 @@
-// app/src/components/ChatInterface.tsx - UPDATED VERSION
+// app/src/components/ChatInterface.tsx - UPDATED
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
@@ -8,6 +8,7 @@ import { uploadImage } from '@/lib/supabase/storage';
 import { trackAnalytics } from '@/lib/supabase/auth';
 import MessageBubble from './MessageBubble';
 import toast from 'react-hot-toast';
+import { supabase } from '@/lib/supabase/client';
 
 interface ChatInterfaceProps {
   sessionId: string;
@@ -26,12 +27,9 @@ export default function ChatInterface({
   const { user } = useAuth();
   const [input, setInput] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [guestMessages, setGuestMessages] = useState<any[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Get the correct user ID based on guest status
-  const currentUserId = isGuest ? guestId : user?.id;
-  const currentUsername = isGuest ? `Guest_${guestId?.slice(-4) || 'User'}` : (user?.username || 'You');
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -39,42 +37,77 @@ export default function ChatInterface({
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, guestMessages]);
+
+  // Guest-specific message sending
+  const sendGuestMessage = async (content: string) => {
+    if (!guestId) return { success: false, error: 'No guest ID' };
+
+    const tempMessage = {
+      id: `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      content: content,
+      sender_id: guestId,
+      sender_name: `Guest_${guestId.slice(-4)}`,
+      type: 'text' as const,
+      content_type: 'text' as const,
+      created_at: new Date().toISOString(),
+      session_id: sessionId,
+      moderated: false,
+      sender: {
+        id: guestId,
+        username: `Guest_${guestId.slice(-4)}`
+      }
+    };
+
+    // Add to local state immediately
+    setGuestMessages(prev => [...prev, tempMessage]);
+
+    try {
+      // Try to save to database (for mixed chats with registered users)
+      const { error } = await supabase
+        .from('messages')
+        .insert({
+          session_id: sessionId,
+          content: content,
+          sender_id: guestId,
+          sender_name: `Guest_${guestId.slice(-4)}`,
+          content_type: 'text',
+          is_guest: true
+        });
+
+      if (error) {
+        console.log('Guest message not saved to DB:', error.message);
+      }
+
+      trackAnalytics('guest_message_sent', {
+        sessionId,
+        length: content.length,
+        guestId: guestId.slice(0, 8)
+      });
+
+      return { success: true };
+    } catch (error) {
+      console.error('Guest message error:', error);
+      return { success: false, error: 'Failed to send message' };
+    }
+  };
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || !currentUserId) return;
+    if (!input.trim()) return;
 
     const trimmedInput = input.trim();
     setInput('');
 
-    // For guest messages, we need to handle them differently
-    if (isGuest) {
-      // Create a temporary message for immediate feedback
-      const tempMessage = {
-        id: `temp_${Date.now()}`,
-        content: trimmedInput,
-        sender_id: currentUserId,
-        sender_name: currentUsername,
-        created_at: new Date().toISOString(),
-        type: 'text' as const,
-        is_guest: true
-      };
-
-      // Add temporary message to local state
-      // Note: In your actual useChat hook, you'd need to handle guest messages
-      // This is a simplified version - you'd want to integrate with your realtime service
-      
-      // Track guest analytics
-      trackAnalytics('guest_message_sent', {
-        sessionId,
-        length: trimmedInput.length,
-        guestId: guestId?.slice(0, 8)
-      });
-
-      toast.success('Message sent (guest mode)');
+    if (isGuest && guestId) {
+      const result = await sendGuestMessage(trimmedInput);
+      if (!result.success) {
+        toast.error(result.error || 'Failed to send message');
+        setInput(trimmedInput);
+      } else {
+        toast.success('Message sent');
+      }
     } else {
-      // Regular user message
       const result = await sendMessage(trimmedInput);
       if (!result.success) {
         toast.error(result.error || 'Failed to send message');
@@ -139,11 +172,10 @@ export default function ChatInterface({
       
       trackAnalytics('guest_session_ended', {
         sessionId,
-        messageCount: messages.length,
+        messageCount: guestMessages.length,
         guestId: guestId?.slice(0, 8)
       });
     } else {
-      // Regular user session end
       const result = await endSession();
       if (result.success) {
         toast.success('Chat ended');
@@ -154,23 +186,27 @@ export default function ChatInterface({
     }
   };
 
-  // Get partner info - updated for guest support
+  // Get partner info
   const getPartner = () => {
-    if (!session || !currentUserId) return null;
+    if (!session || !user) return null;
     
-    // Determine which user is the partner
-    const partnerId = session.user1_id === currentUserId ? session.user2_id : session.user1_id;
-    const partnerName = session.user1_id === currentUserId ? session.user2?.username : session.user1?.username;
+    const partnerId = session.user1_id === user.id ? session.user2_id : session.user1_id;
+    const partnerName = session.user1_id === user.id 
+      ? session.user2?.username 
+      : session.user1?.username;
     
     return {
       id: partnerId,
       username: partnerName || 'Anonymous',
-      isGuest: session.user1_id === currentUserId ? session.is_guest2 : session.is_guest1
+      isGuest: session.user1_id === user.id ? session.is_guest2 : session.is_guest1
     };
   };
 
   const partner = getPartner();
   const displayName = partner?.isGuest ? 'Anonymous' : (partner?.username || 'Anonymous');
+
+  // Combine regular messages with guest messages
+  const allMessages = isGuest ? [...guestMessages] : messages;
 
   return (
     <div className="flex flex-col h-screen">
@@ -209,7 +245,7 @@ export default function ChatInterface({
 
       {/* Messages Container */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.length === 0 ? (
+        {allMessages.length === 0 ? (
           <div className="text-center py-12">
             <div className="text-4xl mb-4">👋</div>
             <h3 className="text-xl font-bold mb-2">
@@ -229,10 +265,9 @@ export default function ChatInterface({
             )}
           </div>
         ) : (
-          messages.map((message) => {
-            // For guest mode, determine if message is from current user
+          allMessages.map((message) => {
             const isOwn = isGuest 
-              ? message.sender_id === currentUserId
+              ? message.sender_id === guestId
               : message.sender_id === user?.id;
             
             let bubbleDisplayName: string | undefined;
@@ -248,7 +283,6 @@ export default function ChatInterface({
                 message={message}
                 isOwn={isOwn}
                 displayName={bubbleDisplayName}
-                isGuest={isGuest}
               />
             );
           })
@@ -323,7 +357,7 @@ export default function ChatInterface({
 
           {isGuest && (
             <button
-              onClick={() => window.location.href = '/'}
+              onClick={() => router.push('/')}
               className="text-gold hover:text-gold/80 hover:underline"
             >
               Create account →
@@ -334,3 +368,10 @@ export default function ChatInterface({
     </div>
   );
 }
+
+// Add router
+import { useRouter } from 'next/navigation';
+
+// Update the component to include router
+// In the function component, add:
+// const router = useRouter();
