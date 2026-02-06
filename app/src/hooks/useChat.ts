@@ -23,7 +23,23 @@ export function useChat(sessionId?: string) {
         .order('created_at', { ascending: true });
 
       if (fetchError) throw fetchError;
-      setMessages(data as Message[]);
+      
+      // Transform messages to include guest data
+      const transformedMessages = (data || []).map((msg: any) => {
+        // If it's a guest message, create a mock sender object
+        if (msg.is_guest && !msg.sender) {
+          return {
+            ...msg,
+            sender: {
+              id: msg.sender_id,
+              username: msg.sender_name || 'Anonymous'
+            }
+          };
+        }
+        return msg;
+      });
+      
+      setMessages(transformedMessages as Message[]);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -42,7 +58,15 @@ export function useChat(sessionId?: string) {
         .single();
 
       if (fetchError) throw fetchError;
-      setSession(data as ChatSession);
+      
+      // Transform session to ensure guest properties exist
+      const transformedSession: ChatSession = {
+        ...data,
+        is_guest1: data.is_guest1 || false,
+        is_guest2: data.is_guest2 || false
+      };
+      
+      setSession(transformedSession as ChatSession);
     } catch (err: any) {
       setError(err.message);
     }
@@ -146,12 +170,25 @@ export function useChat(sessionId?: string) {
 
     // Subscribe to real-time messages
     const channel = realtimeService.subscribeToMessages(sessionId, (newMessage) => {
+      // Transform guest messages
+      if (newMessage.is_guest && !newMessage.sender) {
+        newMessage.sender = {
+          id: newMessage.sender_id,
+          username: newMessage.sender_name || 'Anonymous'
+        };
+      }
       setMessages((prev) => [...prev, newMessage]);
     });
 
     // Subscribe to session updates
     const sessionChannel = realtimeService.subscribeToSession(sessionId, (updatedSession) => {
-      setSession(updatedSession);
+      // Ensure guest properties exist
+      const transformedSession: ChatSession = {
+        ...updatedSession,
+        is_guest1: updatedSession.is_guest1 || false,
+        is_guest2: updatedSession.is_guest2 || false
+      };
+      setSession(transformedSession);
     });
 
     return () => {
