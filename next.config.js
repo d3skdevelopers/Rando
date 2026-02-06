@@ -3,9 +3,8 @@
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
-  experimental: {
-    appDir: true,
-  },
+  // appDir is now enabled by default in Next.js 14+
+  // Remove the experimental.appDir option
 };
 
 module.exports = nextConfig;
