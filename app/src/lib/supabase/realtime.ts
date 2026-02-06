@@ -47,25 +47,27 @@ export class RealtimeService {
     return channel;
   }
 
-  async subscribeToOnlineUsers(callback: (count: number) => void) {
+  async subscribeToOnlineUsers(callback: (userIds: string[]) => void) {
     try {
-      // Count active users in matchmaking queue
-      const { count, error } = await supabase
+      // Get active users in matchmaking queue (return their IDs)
+      const { data: queueData, error } = await supabase
         .from('matchmaking_queue')
-        .select('*', { count: 'exact', head: true });
+        .select('user_id');
 
       if (error) {
-        console.error('Error counting online users:', error);
-        callback(1);
+        console.error('Error fetching online users:', error);
+        callback([]);
         return null;
       }
 
-      console.log(`Online users (searching): ${count || 0}`);
-      callback(count || 0);
+      // Extract user IDs
+      const userIds = queueData?.map(item => item.user_id) || [];
+      console.log(`Online users (searching): ${userIds.length}`);
+      callback(userIds);
 
       // Subscribe to real-time updates
       const channel = supabase
-        .channel('online-count')
+        .channel('online-users')
         .on(
           'postgres_changes',
           {
@@ -74,22 +76,24 @@ export class RealtimeService {
             table: 'matchmaking_queue',
           },
           async () => {
-            const { count: newCount } = await supabase
+            // Re-fetch when queue changes
+            const { data: newData } = await supabase
               .from('matchmaking_queue')
-              .select('*', { count: 'exact', head: true });
+              .select('user_id');
             
-            console.log(`Online users updated: ${newCount || 0}`);
-            callback(newCount || 0);
+            const newUserIds = newData?.map(item => item.user_id) || [];
+            console.log(`Online users updated: ${newUserIds.length}`);
+            callback(newUserIds);
           }
         )
         .subscribe();
 
-      this.channels.set('online-count', channel);
+      this.channels.set('online-users', channel);
       return channel;
 
     } catch (error) {
       console.error('Failed to subscribe to online users:', error);
-      callback(1);
+      callback([]);
       return null;
     }
   }
@@ -103,7 +107,7 @@ export class RealtimeService {
   }
 
   unsubscribeAll() {
-    this.channels.forEach((channel, key) => {
+    this.channels.forEach((channel) => {
       supabase.removeChannel(channel);
     });
     this.channels.clear();
