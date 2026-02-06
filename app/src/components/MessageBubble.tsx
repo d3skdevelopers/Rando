@@ -6,7 +6,7 @@ import { format } from 'date-fns';
 interface MessageBubbleProps {
   message: Message;
   isOwn: boolean;
-  displayName?: string; // Add this prop
+  displayName?: string; // Add this prop for guest mode
 }
 
 export default function MessageBubble({ message, isOwn, displayName }: MessageBubbleProps) {
@@ -21,6 +21,11 @@ export default function MessageBubble({ message, isOwn, displayName }: MessageBu
     return (
       <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
         <div className={`max-w-[70%] ${isOwn ? 'ml-auto' : ''}`}>
+          {!isOwn && (
+            <div className="text-xs text-gray-500 mb-1">
+              {senderName}
+            </div>
+          )}
           <div className="relative group">
             <img
               src={message.content}
