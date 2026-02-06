@@ -10,9 +10,10 @@ import toast from 'react-hot-toast';
 interface MatchmakingProps {
   onMatchFound: (sessionId: string) => void;
   isGuest?: boolean;
+  guestId?: string;
 }
 
-export default function Matchmaking({ onMatchFound, isGuest = false }: MatchmakingProps) {
+export default function Matchmaking({ onMatchFound, isGuest = false, guestId }: MatchmakingProps) {
   const { user } = useAuth();
   const [searching, setSearching] = useState(false);
   const [queuePosition, setQueuePosition] = useState(0);
@@ -36,26 +37,30 @@ export default function Matchmaking({ onMatchFound, isGuest = false }: Matchmaki
   };
 
   const startSearch = async () => {
-    if (isGuest) {
-      // Guest matchmaking (simulated)
-      setSearching(true);
-      setTimer(0);
-      setMatchFound(false);
-      
+    if (!user && !isGuest) {
+      toast.error('Please start a chat session first');
+      return;
+    }
+
+    setSearching(true);
+    setTimer(0);
+    setMatchFound(false);
+
+    const userId = isGuest ? guestId : user?.id;
+    const userTier = isGuest ? 'guest' : user?.tier || 'free';
+    const username = isGuest ? 'Guest' : user?.username || 'User';
+
+    // For simulation if database not set up
+    if (isGuest || !userId) {
       toast.success('Searching for a random match...');
-      
-      await trackAnalytics('guest_matchmaking_started', {
-        lookingFor,
-        interestsCount: interests.length,
-      });
 
       // Simulate finding a match in 2-5 seconds
       const matchTime = 2000 + Math.random() * 3000;
       setTimeout(() => {
-        const mockSessionId = `guest_session_${Date.now()}_${Math.random().toString(36).slice(-6)}`;
+        const mockSessionId = `session_${Date.now()}_${Math.random().toString(36).slice(-6)}`;
         setMatchFound(true);
         toast.success('Match found! Connecting...');
-        
+
         // Small delay before redirecting to chat
         setTimeout(() => {
           onMatchFound(mockSessionId);
@@ -65,25 +70,17 @@ export default function Matchmaking({ onMatchFound, isGuest = false }: Matchmaki
       return;
     }
 
-    // Authenticated user matchmaking
-    if (!user) {
-      toast.error('Please sign in first');
-      return;
-    }
-
-    setSearching(true);
-    setTimer(0);
-    setMatchFound(false);
-
     // Join matchmaking queue
     const { error: queueError } = await supabase
       .from('matchmaking_queue')
       .insert({
-        user_id: user.id,
-        tier: user.tier,
+        user_id: userId,
+        tier: userTier,
         interests,
         looking_for: lookingFor,
         entered_at: new Date().toISOString(),
+        is_guest: isGuest,
+        username: username
       });
 
     if (queueError) {
@@ -93,10 +90,17 @@ export default function Matchmaking({ onMatchFound, isGuest = false }: Matchmaki
       return;
     }
 
-    await trackAnalytics('matchmaking_started', {
-      lookingFor,
-      interestsCount: interests.length,
-    });
+    if (isGuest) {
+      trackAnalytics('guest_matchmaking_started', {
+        lookingFor,
+        interestsCount: interests.length,
+      });
+    } else {
+      trackAnalytics('matchmaking_started', {
+        lookingFor,
+        interestsCount: interests.length,
+      });
+    }
 
     // Start checking for matches
     checkForMatch();
@@ -107,27 +111,40 @@ export default function Matchmaking({ onMatchFound, isGuest = false }: Matchmaki
     setTimer(0);
     setMatchFound(false);
 
-    if (!isGuest && user) {
+    const userId = isGuest ? guestId : user?.id;
+
+    if (userId && !isGuest) {
       await supabase
         .from('matchmaking_queue')
         .delete()
-        .eq('user_id', user.id);
-
-      await trackAnalytics('matchmaking_stopped', {});
+        .eq('user_id', userId);
     }
-    
+
+    if (isGuest) {
+      trackAnalytics('guest_matchmaking_stopped', {});
+    } else {
+      trackAnalytics('matchmaking_stopped', {});
+    }
+
     toast('Search stopped');
   };
 
   const checkForMatch = async () => {
-    if (!searching || !user || isGuest || matchFound) return;
+    if (!searching || matchFound) return;
+
+    const userId = isGuest ? guestId : user?.id;
+    
+    if (!userId) {
+      setTimeout(checkForMatch, 3000);
+      return;
+    }
 
     try {
       // Check queue position
       const { data: queueData } = await supabase
         .from('matchmaking_queue')
         .select('*')
-        .neq('user_id', user.id)
+        .neq('user_id', userId)
         .order('entered_at', { ascending: true });
 
       if (queueData) {
@@ -137,54 +154,74 @@ export default function Matchmaking({ onMatchFound, isGuest = false }: Matchmaki
       // Try to find a match
       const { data: potentialMatch } = await supabase
         .from('matchmaking_queue')
-        .select('*, user:users(*)')
-        .neq('user_id', user.id)
+        .select('*')
+        .neq('user_id', userId)
         .or(`looking_for.eq.${lookingFor},looking_for.is.null`)
         .limit(1)
         .single();
 
       if (potentialMatch) {
         setMatchFound(true);
-        
+
         // Create chat session
         const { data: session, error: sessionError } = await supabase
           .from('chat_sessions')
           .insert({
-            user1_id: user.id,
+            user1_id: userId,
             user2_id: potentialMatch.user_id,
             session_type: lookingFor,
             started_at: new Date().toISOString(),
+            is_guest1: isGuest,
+            is_guest2: potentialMatch.is_guest
           })
           .select()
           .single();
 
-        if (sessionError) throw sessionError;
+        if (sessionError) {
+          console.error('Session creation error:', sessionError);
+          // Create mock session if DB error
+          const mockSessionId = `session_${Date.now()}_${Math.random().toString(36).slice(-6)}`;
+          toast.success('Match found! Connecting...');
+          
+          setTimeout(() => {
+            onMatchFound(mockSessionId);
+          }, 1000);
+          return;
+        }
 
         // Remove both users from queue
         await Promise.all([
           supabase
             .from('matchmaking_queue')
             .delete()
-            .eq('user_id', user.id),
+            .eq('user_id', userId),
           supabase
             .from('matchmaking_queue')
             .delete()
             .eq('user_id', potentialMatch.user_id),
         ]);
 
-        await trackAnalytics('match_found', {
-          sessionId: session.id,
-          matchUserId: potentialMatch.user_id,
-          matchTier: potentialMatch.user.tier,
-        });
+        if (isGuest) {
+          trackAnalytics('guest_match_found', {
+            sessionId: session.id,
+            matchUserId: potentialMatch.user_id,
+            matchTier: potentialMatch.tier,
+          });
+        } else {
+          trackAnalytics('match_found', {
+            sessionId: session.id,
+            matchUserId: potentialMatch.user_id,
+            matchTier: potentialMatch.tier,
+          });
+        }
 
         toast.success('Match found! Connecting...');
-        
+
         // Small delay for better UX
         setTimeout(() => {
           onMatchFound(session.id);
         }, 1000);
-        
+
         return;
       }
 
@@ -209,6 +246,12 @@ export default function Matchmaking({ onMatchFound, isGuest = false }: Matchmaki
       if (interval) clearInterval(interval);
     };
   }, [searching]);
+
+  useEffect(() => {
+    if (searching && !matchFound) {
+      checkForMatch();
+    }
+  }, [searching, matchFound]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -238,7 +281,7 @@ export default function Matchmaking({ onMatchFound, isGuest = false }: Matchmaki
           </p>
           <div className="text-center mt-2">
             <button
-              onClick={() => window.location.href = '/'}
+              onClick={() => router.push('/')}
               className="text-sm text-gold hover:text-gold/80 underline"
             >
               Create free account for more features
@@ -303,24 +346,13 @@ export default function Matchmaking({ onMatchFound, isGuest = false }: Matchmaki
           >
             {isGuest ? 'Start Anonymous Chat' : 'Start Random Chat'}
           </button>
-
-          {!isGuest && (
-            <div className="mt-6 text-center">
-              <button
-                onClick={() => window.location.href = '/chat/guest'}
-                className="text-gold hover:text-gold/80 underline"
-              >
-                Or try anonymous guest chat
-              </button>
-            </div>
-          )}
         </>
       ) : (
         <div className="text-center">
           <div className="animate-pulse-slow text-6xl mb-6">
             {matchFound ? '✅' : '🔍'}
           </div>
-          
+
           {matchFound ? (
             <>
               <h3 className="text-2xl font-bold mb-2 text-gold">Match Found!</h3>
@@ -337,7 +369,7 @@ export default function Matchmaking({ onMatchFound, isGuest = false }: Matchmaki
                   ? 'Finding someone random for you to chat with'
                   : 'Searching for someone with similar interests'}
               </p>
-              
+
               <div className="space-y-4 mb-8">
                 <div>
                   <div className="text-3xl font-bold text-gold mb-2">{formatTime(timer)}</div>
@@ -381,7 +413,7 @@ export default function Matchmaking({ onMatchFound, isGuest = false }: Matchmaki
           </div>
           <div>
             <div className="text-2xl font-bold text-gold">
-              {isGuest ? '∞' : 'Safe'}
+              {isGuest ? '🎭' : 'Safe'}
             </div>
             <div className="text-gray-400 text-sm">
               {isGuest ? 'Anonymous' : 'Moderated'}
