@@ -18,62 +18,117 @@ export default function ChatPage() {
   const [currentSession, setCurrentSession] = useState<string | null>(null);
   const [showVerification, setShowVerification] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
+  const [isGuest, setIsGuest] = useState(false);
+  const [guestInfo, setGuestInfo] = useState({ id: '', username: 'Guest' });
   const channelRef = useRef<RealtimeChannel | null>(null);
 
   useEffect(() => {
-    if (user) {
-      // Check if email needs verification
-      if (!user.email_verified) {
-        setShowVerification(true);
-      }
-
-      // Subscribe to online users
-      realtimeService.subscribeToOnlineUsers(setOnlineUsers)
-        .then(channel => {
-          channelRef.current = channel;
-        })
-        .catch(error => {
-          console.error('Failed to subscribe to online users:', error);
-        });
-
-      // Cleanup function
-      return () => {
-        if (channelRef.current) {
-          channelRef.current.unsubscribe();
-          channelRef.current = null;
+    const checkSession = () => {
+      if (user) {
+        // Authenticated user
+        setIsGuest(false);
+        if (!user.email_verified) {
+          setShowVerification(true);
         }
-      };
-    }
-  }, [user]);
+      } else {
+        // Check for guest session
+        const guestId = localStorage.getItem('rando_guest_id');
+        const guestUsername = localStorage.getItem('rando_guest_username') || 'Guest';
+        
+        if (guestId) {
+          setIsGuest(true);
+          setGuestInfo({ 
+            id: guestId, 
+            username: guestUsername 
+          });
+        } else {
+          // No user and no guest - go back to landing
+          router.push('/');
+          return;
+        }
+      }
+    };
+
+    checkSession();
+
+    // Subscribe to online users
+    const subscribeToUsers = async () => {
+      try {
+        const channel = await realtimeService.subscribeToOnlineUsers(setOnlineUsers);
+        channelRef.current = channel;
+      } catch (error) {
+        console.error('Failed to subscribe to online users:', error);
+      }
+    };
+
+    subscribeToUsers();
+
+    return () => {
+      if (channelRef.current) {
+        channelRef.current.unsubscribe();
+        channelRef.current = null;
+      }
+    };
+  }, [user, router]);
 
   const handleMatchFound = (sessionId: string) => {
     setCurrentSession(sessionId);
-    trackAnalytics('chat_started', { sessionId });
+    if (isGuest) {
+      trackAnalytics('guest_chat_started', { sessionId });
+    } else {
+      trackAnalytics('chat_started', { sessionId });
+    }
   };
 
   const handleEndSession = () => {
     setCurrentSession(null);
-    trackAnalytics('chat_ended', {});
+    if (isGuest) {
+      trackAnalytics('guest_chat_ended', {});
+    } else {
+      trackAnalytics('chat_ended', {});
+    }
   };
 
   const handleSignOut = async () => {
-    // Unsubscribe from channel before signing out
+    // Cleanup
     if (channelRef.current) {
       channelRef.current.unsubscribe();
       channelRef.current = null;
     }
 
-    await signOut();
+    if (isGuest) {
+      // Clear guest session
+      localStorage.removeItem('rando_guest_id');
+      localStorage.removeItem('rando_guest_username');
+      toast.success('Guest session ended');
+    } else {
+      await signOut();
+    }
+    
     router.push('/');
   };
 
   const goToProfile = () => {
-    router.push('/profile');
+    if (isGuest) {
+      toast.success('Create an account to access profile features');
+      router.push('/');
+    } else {
+      router.push('/profile');
+    }
   };
 
-  if (!user) {
-    router.push('/');
-    return null;
+  const getDisplayName = () => {
+    if (isGuest) return guestInfo.username;
+    return user?.username || 'User';
+  };
+
+  const getTier = () => {
+    if (isGuest) return 'guest';
+    return user?.tier || 'free';
+  };
+
+  if (!user && !isGuest) {
+    return null; // Will redirect in useEffect
   }
 
   if (showVerification) {
@@ -104,13 +159,13 @@ export default function ChatPage() {
 
           <div className="flex items-center space-x-4">
             <div className="text-right hidden md:block">
-              <div className="font-bold">{user.username}</div>
-              <div className="text-xs text-gray-400">{user.tier} tier</div>
+              <div className="font-bold">{getDisplayName()}</div>
+              <div className="text-xs text-gray-400">{getTier()} {isGuest && '(Guest)'}</div>
             </div>
             <button
               onClick={goToProfile}
               className="w-10 h-10 rounded-full bg-card flex items-center justify-center hover:bg-gray-800 transition-colors"
-              title="Profile"
+              title={isGuest ? "Create account for profile" : "Profile"}
             >
               👤
             </button>
@@ -118,7 +173,7 @@ export default function ChatPage() {
               onClick={handleSignOut}
               className="px-4 py-2 rounded-lg border border-gray-700 hover:border-coral hover:text-coral transition-all"
             >
-              Sign Out
+              {isGuest ? 'End Chat' : 'Sign Out'}
             </button>
           </div>
         </div>
@@ -130,9 +185,15 @@ export default function ChatPage() {
           <ChatInterface
             sessionId={currentSession}
             onEndSession={handleEndSession}
+            isGuest={isGuest}
+            guestId={isGuest ? guestInfo.id : undefined}
           />
         ) : (
-          <Matchmaking onMatchFound={handleMatchFound} />
+          <Matchmaking 
+            onMatchFound={handleMatchFound}
+            isGuest={isGuest}
+            guestId={isGuest ? guestInfo.id : undefined}
+          />
         )}
       </div>
 
@@ -145,26 +206,17 @@ export default function ChatPage() {
             <span className="mx-2">🔒 Link blocking enabled</span> • 
             <span>👮 Content moderated</span>
           </p>
-          <div className="mt-3 flex justify-center space-x-6">
-            <button
-              className="hover:text-gold"
-              onClick={() => toast.success('Report system active')}
-            >
-              Report User
-            </button>
-            <button
-              className="hover:text-gold"
-              onClick={() => toast.success('Safety guide coming soon')}
-            >
-              Safety Guide
-            </button>
-            <button
-              className="hover:text-gold"
-              onClick={() => toast.success('Contact form coming soon')}
-            >
-              Contact Support
-            </button>
-          </div>
+          {isGuest && (
+            <p className="mt-2 text-gold">
+              ✨ Guest session • Chats won't be saved •{' '}
+              <button 
+                onClick={() => router.push('/')}
+                className="underline hover:text-gold/80"
+              >
+                Create account to save chats
+              </button>
+            </p>
+          )}
         </div>
       </div>
     </div>
