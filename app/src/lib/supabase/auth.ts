@@ -9,8 +9,8 @@ export async function signUp(email: string, password: string, username: string) 
       password,
       options: {
         data: { username },
-        // Disable email confirmation for now
-        emailRedirectTo: null,
+        // Use undefined instead of null for TypeScript
+        emailRedirectTo: undefined,
       },
     });
 
@@ -26,14 +26,14 @@ export async function signUp(email: string, password: string, username: string) 
       // Try to get current session
       const { data: { session } } = await supabase.auth.getSession();
       console.log('Session after signup:', session);
-      
+
       if (!session) {
         throw new Error('Auth user created but no session returned. Check Supabase Auth configuration.');
       }
-      
+
       // Use session user instead
       const userId = session.user.id;
-      
+
       // 3. Create user profile
       const { error: profileError } = await supabase
         .from('users')
@@ -75,7 +75,7 @@ export async function signUp(email: string, password: string, username: string) 
 
     await trackAnalytics('sign_up', { email, username, method: 'email' });
     return { success: true, user: authData.user };
-    
+
   } catch (error: any) {
     console.error('Signup error:', error);
     return { success: false, error: error.message };
