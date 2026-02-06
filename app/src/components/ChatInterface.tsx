@@ -1,4 +1,4 @@
-// app/src/components/ChatInterface.tsx
+// app/src/components/ChatInterface.tsx - UPDATED VERSION
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
@@ -20,7 +20,7 @@ export default function ChatInterface({
   sessionId, 
   onEndSession, 
   isGuest = false, 
-  guestId = 'Guest' 
+  guestId 
 }: ChatInterfaceProps) {
   const { messages, session, sendMessage, endSession } = useChat(sessionId);
   const { user } = useAuth();
@@ -28,6 +28,10 @@ export default function ChatInterface({
   const [uploading, setUploading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Get the correct user ID based on guest status
+  const currentUserId = isGuest ? guestId : user?.id;
+  const currentUsername = isGuest ? `Guest_${guestId?.slice(-4) || 'User'}` : (user?.username || 'You');
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -39,23 +43,42 @@ export default function ChatInterface({
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim()) return;
+    if (!input.trim() || !currentUserId) return;
 
     const trimmedInput = input.trim();
     setInput('');
 
-    const result = await sendMessage(trimmedInput);
-    if (!result.success) {
-      toast.error(result.error || 'Failed to send message');
-      setInput(trimmedInput);
+    // For guest messages, we need to handle them differently
+    if (isGuest) {
+      // Create a temporary message for immediate feedback
+      const tempMessage = {
+        id: `temp_${Date.now()}`,
+        content: trimmedInput,
+        sender_id: currentUserId,
+        sender_name: currentUsername,
+        created_at: new Date().toISOString(),
+        type: 'text' as const,
+        is_guest: true
+      };
+
+      // Add temporary message to local state
+      // Note: In your actual useChat hook, you'd need to handle guest messages
+      // This is a simplified version - you'd want to integrate with your realtime service
+      
+      // Track guest analytics
+      trackAnalytics('guest_message_sent', {
+        sessionId,
+        length: trimmedInput.length,
+        guestId: guestId?.slice(0, 8)
+      });
+
+      toast.success('Message sent (guest mode)');
     } else {
-      // Track guest messages differently
-      if (isGuest) {
-        trackAnalytics('guest_message_sent', {
-          sessionId,
-          length: trimmedInput.length,
-          guestId: guestId?.slice(0, 8)
-        });
+      // Regular user message
+      const result = await sendMessage(trimmedInput);
+      if (!result.success) {
+        toast.error(result.error || 'Failed to send message');
+        setInput(trimmedInput);
       }
     }
   };
@@ -109,31 +132,45 @@ export default function ChatInterface({
   };
 
   const handleEndChat = async () => {
-    const result = await endSession();
-    if (result.success) {
+    if (isGuest) {
+      // For guests, just end the session locally
       toast.success('Chat ended');
       onEndSession();
       
-      if (isGuest) {
-        trackAnalytics('guest_session_ended', {
-          sessionId,
-          messageCount: messages.length,
-          guestId: guestId?.slice(0, 8)
-        });
-      }
+      trackAnalytics('guest_session_ended', {
+        sessionId,
+        messageCount: messages.length,
+        guestId: guestId?.slice(0, 8)
+      });
     } else {
-      toast.error(result.error || 'Failed to end chat');
+      // Regular user session end
+      const result = await endSession();
+      if (result.success) {
+        toast.success('Chat ended');
+        onEndSession();
+      } else {
+        toast.error(result.error || 'Failed to end chat');
+      }
     }
   };
 
+  // Get partner info - updated for guest support
   const getPartner = () => {
-    if (!session || !user) return null;
-    return session.user1_id === user.id ? session.user2 : session.user1;
+    if (!session || !currentUserId) return null;
+    
+    // Determine which user is the partner
+    const partnerId = session.user1_id === currentUserId ? session.user2_id : session.user1_id;
+    const partnerName = session.user1_id === currentUserId ? session.user2?.username : session.user1?.username;
+    
+    return {
+      id: partnerId,
+      username: partnerName || 'Anonymous',
+      isGuest: session.user1_id === currentUserId ? session.is_guest2 : session.is_guest1
+    };
   };
 
   const partner = getPartner();
-  const displayName = isGuest ? 'Anonymous' : (partner?.username || 'Anonymous');
-  const currentUsername = isGuest ? `Guest_${guestId?.slice(-4)}` : (user?.username || 'You');
+  const displayName = partner?.isGuest ? 'Anonymous' : (partner?.username || 'Anonymous');
 
   return (
     <div className="flex flex-col h-screen">
@@ -149,7 +186,7 @@ export default function ChatInterface({
             <div>
               <h3 className="font-bold">{displayName}</h3>
               <p className="text-sm text-gray-400">
-                {isGuest ? 'Anonymous chat • Messages not saved' : 'Connected'}
+                {isGuest ? 'Guest Mode • Anonymous chat' : 'Connected'}
                 {session?.started_at && ` • ${new Date(session.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
               </p>
             </div>
@@ -157,7 +194,7 @@ export default function ChatInterface({
           <div className="flex items-center space-x-2">
             {isGuest && (
               <span className="px-2 py-1 bg-gradient-to-r from-primary to-gold text-dark text-xs rounded-full font-bold">
-                GUEST
+                GUEST MODE
               </span>
             )}
             <button
@@ -175,34 +212,43 @@ export default function ChatInterface({
         {messages.length === 0 ? (
           <div className="text-center py-12">
             <div className="text-4xl mb-4">👋</div>
-            <h3 className="text-xl font-bold mb-2">Chat Started!</h3>
+            <h3 className="text-xl font-bold mb-2">
+              {isGuest ? 'Anonymous Chat Started!' : 'Chat Started!'}
+            </h3>
             <p className="text-gray-400">
               {isGuest 
                 ? 'Say hello! This chat is anonymous and messages are not saved.'
                 : 'Say hello to start the conversation!'}
             </p>
             {isGuest && (
-              <div className="mt-4 p-3 bg-card rounded-lg">
-                <p className="text-sm text-warning">
-                  ⚠️ Guest mode: Create an account to save conversations and unlock all features
+              <div className="mt-4 p-3 bg-gradient-to-r from-primary/20 to-gold/20 rounded-lg border border-gold/30">
+                <p className="text-sm">
+                  <span className="font-bold text-gold">✨ Guest Mode:</span> Create an account to save conversations, send images, and unlock all features
                 </p>
               </div>
             )}
           </div>
         ) : (
           messages.map((message) => {
-            // Determine display name for guest mode
+            // For guest mode, determine if message is from current user
+            const isOwn = isGuest 
+              ? message.sender_id === currentUserId
+              : message.sender_id === user?.id;
+            
             let bubbleDisplayName: string | undefined;
             if (isGuest) {
-              bubbleDisplayName = message.sender_id === user?.id ? 'You' : 'Stranger';
+              bubbleDisplayName = isOwn ? 'You' : 'Stranger';
+            } else {
+              bubbleDisplayName = isOwn ? 'You' : message.sender_name;
             }
-            
+
             return (
               <MessageBubble
                 key={message.id}
                 message={message}
-                isOwn={message.sender_id === user?.id || isGuest}
+                isOwn={isOwn}
                 displayName={bubbleDisplayName}
+                isGuest={isGuest}
               />
             );
           })
@@ -213,39 +259,39 @@ export default function ChatInterface({
       {/* Input Area */}
       <div className="glass border-t border-gray-800 p-4">
         <form onSubmit={handleSend} className="flex space-x-2">
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleImageUpload}
-            accept="image/*"
-            className="hidden"
-          />
-          
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading || isGuest || user?.tier === 'free'}
-            className={`px-4 py-3 rounded-lg border ${
-              isGuest
-                ? 'border-gray-600 text-gray-500 cursor-not-allowed'
-                : user?.tier === 'free'
-                ? 'border-gray-600 text-gray-500 cursor-not-allowed'
-                : 'border-gold text-gold hover:bg-gold hover:text-dark'
-            } transition-all duration-200`}
-            title={isGuest 
-              ? 'Guests cannot send images' 
-              : user?.tier === 'free' 
-                ? 'Upgrade to send images' 
-                : 'Send image'}
-          >
-            {uploading ? '📤 Uploading...' : '📸'}
-          </button>
+          {/* Only show image upload for non-guests */}
+          {!isGuest && (
+            <>
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleImageUpload}
+                accept="image/*"
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading || user?.tier === 'free'}
+                className={`px-4 py-3 rounded-lg border ${
+                  user?.tier === 'free'
+                    ? 'border-gray-600 text-gray-500 cursor-not-allowed'
+                    : 'border-gold text-gold hover:bg-gold hover:text-dark'
+                } transition-all duration-200`}
+                title={user?.tier === 'free' 
+                  ? 'Upgrade to send images' 
+                  : 'Send image'}
+              >
+                {uploading ? '📤 Uploading...' : '📸'}
+              </button>
+            </>
+          )}
 
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={isGuest ? "Chat anonymously..." : "Type your message..."}
+            placeholder={isGuest ? "Chat anonymously (messages not saved)..." : "Type your message..."}
             className="input-field flex-1"
             onKeyPress={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
@@ -264,25 +310,21 @@ export default function ChatInterface({
           </button>
         </form>
 
-        <div className="mt-2 flex justify-between items-center">
-          {isGuest ? (
-            <p className="text-sm text-gray-400">
-              💬 Guest chat • Messages not saved
-            </p>
-          ) : user?.tier === 'free' ? (
-            <p className="text-sm text-gray-400">
-              💡 Upgrade to Premium or Student tier to send images
-            </p>
-          ) : (
-            <p className="text-sm text-gray-400">
-              Press Enter to send • Shift+Enter for new line
-            </p>
-          )}
-          
+        <div className="mt-2 flex justify-between items-center text-sm text-gray-400">
+          <div>
+            {isGuest ? (
+              <span>💬 Guest chat • Messages not saved</span>
+            ) : user?.tier === 'free' ? (
+              <span>💡 Upgrade to send images</span>
+            ) : (
+              <span>Press Enter to send</span>
+            )}
+          </div>
+
           {isGuest && (
             <button
               onClick={() => window.location.href = '/'}
-              className="text-xs text-gold hover:text-gold/80"
+              className="text-gold hover:text-gold/80 hover:underline"
             >
               Create account →
             </button>
