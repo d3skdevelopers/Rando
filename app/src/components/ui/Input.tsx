@@ -1,6 +1,4 @@
-// app/src/components/ui/Input.tsx
 import React from 'react';
-import { cn } from '@/lib/utils';
 
 export interface InputProps
   extends React.InputHTMLAttributes<HTMLInputElement> {
@@ -16,35 +14,38 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     return (
       <div className="space-y-2">
         {label && (
-          <label className="block text-sm font-medium text-text-primary">
+          <label className="block text-sm font-medium text-white">
             {label}
           </label>
         )}
         <div className="relative">
           {leftIcon && (
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted">
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8a8aa3]">
               {leftIcon}
             </div>
           )}
           <input
-            className={cn(
-              'input-field w-full',
-              leftIcon && 'pl-10',
-              rightIcon && 'pr-10',
-              error && 'border-danger focus:ring-danger',
-              className
-            )}
+            className={`
+              w-full bg-[#252540] border border-[#2d2d4a] rounded-lg 
+              px-4 py-3 text-white placeholder:text-[#8a8aa3]
+              focus:outline-none focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent
+              transition-all duration-200
+              ${leftIcon ? 'pl-10' : ''}
+              ${rightIcon ? 'pr-10' : ''}
+              ${error ? 'border-[#EF4444] focus:ring-[#EF4444]' : ''}
+              ${className || ''}
+            `}
             ref={ref}
             {...props}
           />
           {rightIcon && (
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted">
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8a8aa3]">
               {rightIcon}
             </div>
           )}
         </div>
         {(error || helperText) && (
-          <p className={cn('text-sm', error ? 'text-danger' : 'text-text-secondary')}>
+          <p className={`text-sm ${error ? 'text-[#EF4444]' : 'text-[#B8B8D1]'}`}>
             {error || helperText}
           </p>
         )}
