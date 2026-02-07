@@ -1,4 +1,3 @@
-// app/src/components/ChatInterface.tsx - FIXED VERSION
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
@@ -15,19 +14,6 @@ import { Button } from './ui/Button';
 import { Badge } from './ui/Badge';
 import { Card } from './ui/Card';
 import toast from 'react-hot-toast';
-
-// Import icons from lucide-react
-import { 
-  Image as ImageIcon, 
-  Send, 
-  Shield, 
-  Flag, 
-  SkipForward,
-  Mic,
-  Smile,
-  Zap,
-  Crown
-} from 'lucide-react';
 
 interface ChatInterfaceProps {
   sessionId: string;
@@ -59,7 +45,6 @@ export default function ChatInterface({
     scrollToBottom();
   }, [messages, guestMessages]);
 
-  // Guest-specific message sending
   const sendGuestMessage = async (content: string) => {
     if (!guestId) return { success: false, error: 'No guest ID' };
 
@@ -222,12 +207,11 @@ export default function ChatInterface({
   const displayName = partner?.isGuest ? 'Anonymous' : (partner?.username || 'Anonymous');
   const allMessages = isGuest ? [...guestMessages] : messages;
 
-  // Helper function for random colors
   const getRandomColor = () => {
     const colors = [
-      'bg-gradient-to-r from-rando-purple to-rando-purple-700',
-      'bg-gradient-to-r from-rando-gold to-rando-gold-600',
-      'bg-gradient-to-r from-rando-coral to-rando-coral-600',
+      'bg-gradient-to-r from-[#2E235E] to-[#4A3F8C]',
+      'bg-gradient-to-r from-[#D4AF37] to-[#F4D03F]',
+      'bg-gradient-to-r from-[#FB6962] to-[#FF8C7F]',
     ];
     return colors[Math.floor(Math.random() * colors.length)];
   };
@@ -237,9 +221,8 @@ export default function ChatInterface({
     toast.success('Starter added to input');
   };
 
-  // Chat Header Component - FIXED
   const ChatHeader = () => (
-    <div className="glass border-b border-rando-border p-4">
+    <div className="bg-[#1a1a2e]/80 backdrop-blur-md border-b border-[#2d2d4a] p-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <div className={`w-12 h-12 rounded-full ${getRandomColor()} flex items-center justify-center`}>
@@ -251,9 +234,9 @@ export default function ChatInterface({
             <div className="flex items-center space-x-2">
               <h3 className="font-bold text-lg">{displayName}</h3>
             </div>
-            <div className="flex items-center space-x-3 text-sm text-text-secondary">
+            <div className="flex items-center space-x-3 text-sm text-[#B8B8D1]">
               <span className="flex items-center">
-                <div className="w-2 h-2 bg-success rounded-full mr-1.5" />
+                <div className="w-2 h-2 bg-[#10B981] rounded-full mr-1.5" />
                 Online
               </span>
               {session?.started_at && (
@@ -277,38 +260,33 @@ export default function ChatInterface({
           <Button
             variant="ghost"
             size="sm"
-            leftIcon={<Shield className="h-4 w-4" />}
           >
-            Safety
+            🛡️ Safety
           </Button>
           <Button
             variant="outline"
             size="sm"
             onClick={handleEndChat}
-            leftIcon={<Flag className="h-4 w-4" />}
           >
-            End Chat
+            🏁 End Chat
           </Button>
         </div>
       </div>
     </div>
   );
 
-  // Chat Input Component - FIXED
   const ChatInput = () => (
-    <div className="glass border-t border-rando-border p-4 pb-safe">
-      {/* Conversation Starters */}
+    <div className="bg-[#1a1a2e]/80 backdrop-blur-md border-t border-[#2d2d4a] p-4">
       {allMessages.length < 3 && (
         <div className="mb-4">
           <ConversationStarters onSelect={handleStarterSelect} />
         </div>
       )}
       
-      {/* Guest Progress */}
       {isGuest && guestId && (
         <div className="mb-4">
           <GuestProgress
-            currentChatCount={3} // Replace with actual count
+            currentChatCount={3}
             onUpgrade={() => router.push('/signup')}
             onContinue={() => {}}
           />
@@ -316,7 +294,6 @@ export default function ChatInterface({
       )}
 
       <form onSubmit={handleSend} className="flex space-x-3">
-        {/* Image Upload (non-guests only) */}
         {!isGuest && (
           <>
             <input
@@ -337,16 +314,11 @@ export default function ChatInterface({
                 ? 'Upgrade to send images' 
                 : 'Send image'}
             >
-              {uploading ? (
-                <div className="animate-spin">📤</div>
-              ) : (
-                <ImageIcon className="h-5 w-5" />
-              )}
+              {uploading ? '📤' : '📸'}
             </Button>
           </>
         )}
 
-        {/* Main Input */}
         <div className="flex-1 relative">
           <input
             type="text"
@@ -357,7 +329,7 @@ export default function ChatInterface({
                 ? "Chat anonymously (messages not saved)..."
                 : "Type your message..."
             }
-            className="input-field pr-24"
+            className="w-full bg-[#252540] border border-[#2d2d4a] rounded-lg px-4 py-3 text-white placeholder:text-[#8a8aa3] focus:outline-none focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent"
             onKeyPress={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -365,25 +337,8 @@ export default function ChatInterface({
               }
             }}
           />
-          
-          {/* Input Actions */}
-          <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center space-x-2">
-            <button
-              type="button"
-              className="p-1.5 text-text-secondary hover:text-text-primary transition-colors"
-            >
-              <Smile className="h-5 w-5" />
-            </button>
-            <button
-              type="button"
-              className="p-1.5 text-text-secondary hover:text-text-primary transition-colors"
-            >
-              <Mic className="h-5 w-5" />
-            </button>
-          </div>
         </div>
 
-        {/* Send Button */}
         <Button
           type="submit"
           variant="gold"
@@ -391,15 +346,14 @@ export default function ChatInterface({
           disabled={!input.trim()}
           className="flex-shrink-0"
         >
-          <Send className="h-5 w-5" />
+          📤
         </Button>
       </form>
 
-      {/* Quick Actions */}
       <div className="flex items-center justify-between mt-3">
         <div className="flex items-center space-x-2">
           {isGuest ? (
-            <span className="text-sm text-text-secondary">
+            <span className="text-sm text-[#8a8aa3]">
               💬 Guest chat • Messages not saved
             </span>
           ) : user?.tier === 'free' ? (
@@ -407,13 +361,12 @@ export default function ChatInterface({
               variant="ghost"
               size="sm"
               onClick={() => {/* Show tiers */}}
-              leftIcon={<Zap className="h-4 w-4" />}
             >
-              Upgrade to send images
+              ⚡ Upgrade to send images
             </Button>
           ) : (
-            <span className="text-sm text-text-secondary">
-              Press Enter to send • Shift + Enter for new line
+            <span className="text-sm text-[#8a8aa3]">
+              Press Enter to send
             </span>
           )}
         </div>
@@ -428,34 +381,26 @@ export default function ChatInterface({
               Create account →
             </Button>
           )}
-          <Button
-            variant="ghost"
-            size="sm"
-            leftIcon={<SkipForward className="h-4 w-4" />}
-          >
-            Next Chat
-          </Button>
         </div>
       </div>
     </div>
   );
 
   return (
-    <div className="flex flex-col h-screen bg-gradient-to-b from-rando-bg to-rando-card">
+    <div className="flex flex-col h-screen bg-gradient-to-b from-[#0f0f1a] to-[#1a1a2e]">
       <ChatHeader />
       
-      {/* Messages Container */}
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
         {allMessages.length === 0 ? (
           <div className="text-center py-12">
-            <div className="text-6xl mb-6 animate-float">👋</div>
+            <div className="text-6xl mb-6">👋</div>
             <h3 className="text-2xl font-bold mb-3">
               {isGuest ? 'Anonymous Chat Started!' : 'Chat Started!'}
             </h3>
-            <p className="text-text-secondary mb-6 max-w-md mx-auto">
+            <p className="text-[#B8B8D1] mb-6 max-w-md mx-auto">
               {isGuest 
                 ? 'Say hello! This chat is anonymous and messages are not saved.'
-                : 'Say hello to start the conversation! Try using a conversation starter below.'}
+                : 'Say hello to start the conversation!'}
             </p>
             
             {!isGuest && (
@@ -465,14 +410,14 @@ export default function ChatInterface({
             )}
             
             {isGuest && (
-              <Card variant="gradient" padding="md" className="max-w-md mx-auto border-rando-gold/30">
+              <Card variant="gradient" padding="md" className="max-w-md mx-auto border-[#D4AF37]/30">
                 <div className="flex items-center space-x-3">
-                  <div className="p-2 bg-rando-gold/20 rounded-lg">
-                    <Zap className="h-5 w-5 text-rando-gold" />
+                  <div className="p-2 bg-[#D4AF37]/20 rounded-lg">
+                    <span className="text-[#D4AF37]">⚡</span>
                   </div>
                   <div>
                     <p className="font-semibold">✨ Guest Mode Active</p>
-                    <p className="text-sm text-text-secondary">
+                    <p className="text-sm text-[#B8B8D1]">
                       Create an account to save conversations, send images, and unlock all features
                     </p>
                   </div>
@@ -490,7 +435,6 @@ export default function ChatInterface({
               return (
                 <div
                   key={message.id}
-                  className="animate-message-sent"
                 >
                   <MessageBubble
                     message={message}
