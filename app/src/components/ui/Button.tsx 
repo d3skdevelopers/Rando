@@ -1,52 +1,59 @@
-// app/src/components/ui/Button.tsx
+// app/src/components/ui/Button.tsx - SIMPLIFIED VERSION
 import React from 'react';
-import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
-const buttonVariants = cva(
-  'inline-flex items-center justify-center rounded-lg font-semibold transition-all duration-200 active:scale-95 focus:outline-none focus:ring-2 focus:ring-rando-gold focus:ring-offset-2 focus:ring-offset-rando-bg disabled:opacity-50 disabled:pointer-events-none',
-  {
-    variants: {
-      variant: {
-        default: 'bg-gradient-to-r from-rando-purple to-rando-purple-700 text-white hover:shadow-lg hover:shadow-purple-500/25',
-        gold: 'bg-gradient-to-r from-rando-gold to-rando-gold-600 text-rando-bg hover:shadow-lg hover:shadow-yellow-500/25',
-        coral: 'bg-gradient-to-r from-rando-coral to-rando-coral-600 text-white hover:shadow-lg hover:shadow-red-500/25',
-        outline: 'border-2 border-rando-gold text-rando-gold hover:bg-rando-gold hover:text-rando-bg',
-        ghost: 'text-text-secondary hover:text-text-primary hover:bg-rando-card',
-        danger: 'bg-gradient-to-r from-danger to-red-600 text-white hover:shadow-lg hover:shadow-red-500/25',
-        success: 'bg-gradient-to-r from-success to-emerald-600 text-white hover:shadow-lg hover:shadow-emerald-500/25',
-      },
-      size: {
-        sm: 'px-3 py-2 text-sm',
-        md: 'px-4 py-2.5 text-base',
-        lg: 'px-6 py-3 text-lg',
-        xl: 'px-8 py-4 text-xl',
-        icon: 'p-2.5',
-      },
-      fullWidth: {
-        true: 'w-full',
-      },
-    },
-    defaultVariants: {
-      variant: 'default',
-      size: 'md',
-    },
-  }
-);
-
-export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: 'default' | 'gold' | 'coral' | 'outline' | 'ghost' | 'danger' | 'success';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | 'icon';
+  fullWidth?: boolean;
   loading?: boolean;
   leftIcon?: React.ReactNode;
   rightIcon?: React.ReactNode;
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, fullWidth, loading, leftIcon, rightIcon, children, disabled, ...props }, ref) => {
+  ({ 
+    className, 
+    variant = 'default', 
+    size = 'md', 
+    fullWidth, 
+    loading, 
+    leftIcon, 
+    rightIcon, 
+    children, 
+    disabled, 
+    ...props 
+  }, ref) => {
+    
+    const baseStyles = 'inline-flex items-center justify-center rounded-lg font-semibold transition-all duration-200 active:scale-95 focus:outline-none focus:ring-2 focus:ring-rando-gold focus:ring-offset-2 focus:ring-offset-rando-bg disabled:opacity-50 disabled:pointer-events-none';
+    
+    const variants = {
+      default: 'bg-gradient-to-r from-rando-purple to-rando-purple-700 text-white hover:shadow-lg hover:shadow-purple-500/25',
+      gold: 'bg-gradient-to-r from-rando-gold to-rando-gold-600 text-rando-bg hover:shadow-lg hover:shadow-yellow-500/25',
+      coral: 'bg-gradient-to-r from-rando-coral to-rando-coral-600 text-white hover:shadow-lg hover:shadow-red-500/25',
+      outline: 'border-2 border-rando-gold text-rando-gold hover:bg-rando-gold hover:text-rando-bg',
+      ghost: 'text-text-secondary hover:text-text-primary hover:bg-rando-card',
+      danger: 'bg-gradient-to-r from-danger to-red-600 text-white hover:shadow-lg hover:shadow-red-500/25',
+      success: 'bg-gradient-to-r from-success to-emerald-600 text-white hover:shadow-lg hover:shadow-emerald-500/25',
+    };
+
+    const sizes = {
+      sm: 'px-3 py-2 text-sm',
+      md: 'px-4 py-2.5 text-base',
+      lg: 'px-6 py-3 text-lg',
+      xl: 'px-8 py-4 text-xl',
+      icon: 'p-2.5',
+    };
+
     return (
       <button
-        className={cn(buttonVariants({ variant, size, fullWidth, className }))}
+        className={cn(
+          baseStyles,
+          variants[variant],
+          sizes[size],
+          fullWidth && 'w-full',
+          className
+        )}
         ref={ref}
         disabled={disabled || loading}
         {...props}
@@ -83,4 +90,4 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 
 Button.displayName = 'Button';
 
-export { Button, buttonVariants };
+export { Button };
