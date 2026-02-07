@@ -1,6 +1,4 @@
-// app/src/components/ui/TierCard.tsx
 import React from 'react';
-import { Check, Crown, Sparkles, Star } from 'lucide-react';
 import { Button } from './Button';
 import { Badge } from './Badge';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from './Card';
@@ -39,22 +37,22 @@ const TierCard = ({
   const getTierIcon = () => {
     switch (tier) {
       case 'premium':
-        return <Crown className="h-6 w-6" />;
+        return '👑';
       case 'student':
-        return <Star className="h-6 w-6" />;
+        return '🎓';
       default:
-        return <Sparkles className="h-6 w-6" />;
+        return '✨';
     }
   };
 
   const getTierColor = () => {
     switch (tier) {
       case 'premium':
-        return 'from-rando-coral to-rando-coral-600';
+        return 'from-[#FB6962] to-[#FF8C7F]';
       case 'student':
-        return 'from-rando-gold to-rando-gold-600';
+        return 'from-[#D4AF37] to-[#F4D03F]';
       default:
-        return 'from-rando-purple to-rando-purple-600';
+        return 'from-[#2E235E] to-[#4A3F8C]';
     }
   };
 
@@ -75,7 +73,7 @@ const TierCard = ({
       )}
 
       {featured && (
-        <div className="absolute -inset-1 bg-gradient-to-r from-rando-gold to-rando-gold-600 rounded-2xl blur opacity-20 -z-10" />
+        <div className="absolute -inset-1 bg-gradient-to-r from-[#D4AF37] to-[#F4D03F] rounded-2xl blur opacity-20 -z-10" />
       )}
 
       <CardHeader>
@@ -88,7 +86,7 @@ const TierCard = ({
             </div>
             <div>
               <CardTitle className="text-2xl">{title}</CardTitle>
-              <p className="text-text-secondary">{description}</p>
+              <p className="text-[#B8B8D1]">{description}</p>
             </div>
           </div>
           {tier === 'student' && (
@@ -104,15 +102,15 @@ const TierCard = ({
         <div className="space-y-2">
           <div className="flex items-baseline">
             <span className="text-4xl font-bold">${price.monthly}</span>
-            <span className="text-text-secondary ml-2">/month</span>
+            <span className="text-[#B8B8D1] ml-2">/month</span>
           </div>
           {price.yearly && (
-            <p className="text-sm text-text-secondary">
+            <p className="text-sm text-[#B8B8D1]">
               ${price.yearly}/year (save ${(price.monthly * 12 - price.yearly).toFixed(2)})
             </p>
           )}
           {tier === 'student' && (
-            <p className="text-sm text-success">
+            <p className="text-sm text-[#10B981]">
               🎓 Verified students only
             </p>
           )}
@@ -123,12 +121,12 @@ const TierCard = ({
           {features.map((feature, index) => (
             <div key={index} className="flex items-start">
               {feature.included ? (
-                <Check className="h-5 w-5 text-success mr-3 mt-0.5 flex-shrink-0" />
+                <span className="text-[#10B981] mr-3 mt-0.5 flex-shrink-0">✓</span>
               ) : (
-                <div className="h-5 w-5 text-text-muted mr-3 mt-0.5 flex-shrink-0">×</div>
+                <div className="text-[#8a8aa3] mr-3 mt-0.5 flex-shrink-0">×</div>
               )}
               <span
-                className={feature.included ? 'text-text-primary' : 'text-text-muted line-through'}
+                className={feature.included ? 'text-white' : 'text-[#8a8aa3] line-through'}
               >
                 {feature.text}
               </span>
