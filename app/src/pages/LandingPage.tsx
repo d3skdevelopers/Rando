@@ -1,4 +1,3 @@
-// app/src/pages/LandingPage.tsx - UPDATED VERSION
 'use client';
 
 import React, { useState } from 'react';
@@ -6,21 +5,10 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { signIn, signUp } from '@/lib/supabase/auth';
 import toast from 'react-hot-toast';
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
-import Modal from '@/components/ui/Modal';
-import StudentVerification from '@/components/student/StudentVerification';
-import TierCard from '@/components/ui/TierCard';
-import { 
-  MessageSquare, 
-  Shield, 
-  Star, 
-  Zap, 
-  Users, 
-  Globe,
-  CheckCircle,
-  Sparkles
-} from 'lucide-react';
+import { Button } from '../components/ui/Button';
+import { Card } from '../components/ui/Card';
+import Modal from '../components/ui/Modal';
+import TierCard from '../components/ui/TierCard';
 
 export default function LandingPage() {
   const router = useRouter();
@@ -35,7 +23,6 @@ export default function LandingPage() {
   };
 
   const confirmAge = () => {
-    // Generate guest ID
     const guestId = `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     localStorage.setItem('rando_guest_id', guestId);
     
@@ -49,10 +36,10 @@ export default function LandingPage() {
   };
 
   const features = [
-    { icon: Shield, text: 'Safe & Moderated', color: 'text-success' },
-    { icon: Zap, text: 'Instant Matching', color: 'text-rando-gold' },
-    { icon: Users, text: '2.4M+ Users', color: 'text-info' },
-    { icon: Globe, text: '127 Countries', color: 'text-rando-coral' },
+    { icon: '🛡️', text: 'Safe & Moderated', color: 'text-[#10B981]' },
+    { icon: '⚡', text: 'Instant Matching', color: 'text-[#D4AF37]' },
+    { icon: '👥', text: '2.4M+ Users', color: 'text-[#3B82F6]' },
+    { icon: '🌍', text: '127 Countries', color: 'text-[#FB6962]' },
   ];
 
   const tierFeatures = {
@@ -83,22 +70,22 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-rando-bg overflow-hidden">
+    <div className="min-h-screen bg-[#0f0f1a] overflow-hidden">
       {/* Animated Background */}
       <div className="fixed inset-0 -z-10">
-        <div className="absolute inset-0 bg-gradient-to-br from-rando-purple/10 via-transparent to-rando-gold/5" />
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-rando-purple/20 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-rando-gold/20 rounded-full blur-3xl" />
+        <div className="absolute inset-0 bg-gradient-to-br from-[#2E235E]/10 via-transparent to-[#D4AF37]/5" />
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#2E235E]/20 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-[#D4AF37]/20 rounded-full blur-3xl" />
       </div>
 
       {/* Header */}
       <header className="container mx-auto px-4 py-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="p-2 bg-gradient-to-r from-rando-purple to-rando-gold rounded-lg">
-              <MessageSquare className="h-6 w-6 text-white" />
+            <div className="p-2 bg-gradient-to-r from-[#2E235E] to-[#D4AF37] rounded-lg">
+              <span className="text-white">💬</span>
             </div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-rando-purple via-rando-gold to-rando-coral bg-clip-text text-transparent">
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-[#2E235E] via-[#D4AF37] to-[#FB6962] bg-clip-text text-transparent">
               RANDO
             </h1>
           </div>
@@ -124,22 +111,21 @@ export default function LandingPage() {
       {/* Hero Section */}
       <main className="container mx-auto px-4 py-12 md:py-24">
         <div className="text-center max-w-4xl mx-auto">
-          <div className="inline-flex items-center px-4 py-2 rounded-full bg-rando-gold/10 border border-rando-gold/30 mb-6">
-            <Sparkles className="h-4 w-4 text-rando-gold mr-2" />
-            <span className="text-sm font-medium text-rando-gold">
-              Trusted by 2.4M+ users worldwide
+          <div className="inline-flex items-center px-4 py-2 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/30 mb-6">
+            <span className="text-sm font-medium text-[#D4AF37]">
+              ✨ Trusted by 2.4M+ users worldwide
             </span>
           </div>
           
           <h1 className="text-5xl md:text-7xl font-bold mb-6">
-            <span className="bg-gradient-to-r from-rando-purple via-rando-gold to-rando-coral bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-[#2E235E] via-[#D4AF37] to-[#FB6962] bg-clip-text text-transparent">
               Chat Randomly.
             </span>
             <br />
-            <span className="text-text-primary">Meet Authentically.</span>
+            <span className="text-white">Meet Authentically.</span>
           </h1>
           
-          <p className="text-xl text-text-secondary mb-12 max-w-2xl mx-auto">
+          <p className="text-xl text-[#B8B8D1] mb-12 max-w-2xl mx-auto">
             Connect with real people worldwide. No filters, no algorithms—just genuine conversations.
           </p>
 
@@ -154,20 +140,20 @@ export default function LandingPage() {
             >
               <div className="text-4xl mb-4">🎭</div>
               <h3 className="text-xl font-bold mb-2">Quick Chat</h3>
-              <p className="text-text-secondary mb-6">
+              <p className="text-[#B8B8D1] mb-6">
                 Start instantly, no signup needed. Perfect for spontaneous conversations.
               </p>
               <div className="space-y-2 mb-6">
                 <div className="flex items-center justify-center text-sm">
-                  <CheckCircle className="h-4 w-4 text-success mr-2" />
+                  <span className="text-[#10B981] mr-2">✓</span>
                   <span>Instant start</span>
                 </div>
                 <div className="flex items-center justify-center text-sm">
-                  <CheckCircle className="h-4 w-4 text-success mr-2" />
+                  <span className="text-[#10B981] mr-2">✓</span>
                   <span>Anonymous</span>
                 </div>
                 <div className="flex items-center justify-center text-sm">
-                  <CheckCircle className="h-4 w-4 text-success mr-2" />
+                  <span className="text-[#10B981] mr-2">✓</span>
                   <span>No commitment</span>
                 </div>
               </div>
@@ -175,9 +161,8 @@ export default function LandingPage() {
                 variant="default"
                 size="lg"
                 fullWidth
-                leftIcon="⚡"
               >
-                Start Free Chat
+                ⚡ Start Free Chat
               </Button>
             </Card>
 
@@ -190,20 +175,20 @@ export default function LandingPage() {
             >
               <div className="text-4xl mb-4">⭐</div>
               <h3 className="text-xl font-bold mb-2">Quality Chat</h3>
-              <p className="text-text-secondary mb-6">
+              <p className="text-[#B8B8D1] mb-6">
                 Better matches, saved conversations, and premium features.
               </p>
               <div className="space-y-2 mb-6">
                 <div className="flex items-center justify-center text-sm">
-                  <Star className="h-4 w-4 text-rando-gold mr-2" />
+                  <span className="text-[#D4AF37] mr-2">★</span>
                   <span>Better matches</span>
                 </div>
                 <div className="flex items-center justify-center text-sm">
-                  <Star className="h-4 w-4 text-rando-gold mr-2" />
+                  <span className="text-[#D4AF37] mr-2">★</span>
                   <span>Save conversations</span>
                 </div>
                 <div className="flex items-center justify-center text-sm">
-                  <Star className="h-4 w-4 text-rando-gold mr-2" />
+                  <span className="text-[#D4AF37] mr-2">★</span>
                   <span>Image sharing</span>
                 </div>
               </div>
@@ -211,9 +196,8 @@ export default function LandingPage() {
                 variant="gold"
                 size="lg"
                 fullWidth
-                leftIcon="🎓"
               >
-                Start Quality Chat
+                🎓 Start Quality Chat
               </Button>
             </Card>
           </div>
@@ -222,28 +206,17 @@ export default function LandingPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12">
             {features.map((feature, index) => (
               <div key={index} className="text-center">
-                <feature.icon className={`h-8 w-8 mx-auto mb-2 ${feature.color}`} />
+                <div className={`text-2xl mb-2 ${feature.color}`}>{feature.icon}</div>
                 <p className="text-sm font-medium">{feature.text}</p>
               </div>
             ))}
-          </div>
-
-          {/* Student Verification */}
-          <div className="max-w-md mx-auto">
-            <StudentVerification
-              isVerified={false}
-              onVerify={async (email, university) => {
-                // Implement verification logic
-                toast.success('Verification email sent!');
-              }}
-            />
           </div>
         </div>
       </main>
 
       {/* Footer */}
-      <footer className="container mx-auto px-4 py-8 border-t border-rando-border">
-        <div className="text-center text-text-secondary text-sm">
+      <footer className="container mx-auto px-4 py-8 border-t border-[#2d2d4a]">
+        <div className="text-center text-[#B8B8D1] text-sm">
           <p className="mb-2">🔞 Must be 18+ • 🛡️ Safe & Moderated • 🆓 Completely Free</p>
           <p>© {new Date().getFullYear()} RANDO. Chat responsibly.</p>
         </div>
@@ -257,11 +230,11 @@ export default function LandingPage() {
         description="To use RANDO, you must be 18 years or older."
       >
         <div className="space-y-6">
-          <div className="p-4 bg-rando-input rounded-lg">
-            <p className="text-text-secondary">
+          <div className="p-4 bg-[#252540] rounded-lg">
+            <p className="text-[#B8B8D1]">
               This platform contains conversations with strangers. By continuing, 
               you confirm you're at least 18 years old and agree to our{' '}
-              <button className="text-rando-gold hover:underline">Terms of Service</button>.
+              <button className="text-[#D4AF37] hover:underline">Terms of Service</button>.
             </p>
           </div>
           
@@ -282,9 +255,8 @@ export default function LandingPage() {
             </Button>
           </div>
           
-          <div className="text-center text-sm text-text-secondary">
-            <Shield className="inline h-4 w-4 mr-1" />
-            Your privacy and safety are our top priority
+          <div className="text-center text-sm text-[#B8B8D1]">
+            🛡️ Your privacy and safety are our top priority
           </div>
         </div>
       </Modal>
@@ -314,7 +286,6 @@ export default function LandingPage() {
                 setShowTiers(false);
                 handleQuickChat();
               } else {
-                // Navigate to signup
                 router.push('/signup');
               }
             }}
@@ -328,7 +299,6 @@ export default function LandingPage() {
             features={tierFeatures.student}
             ctaText="Get Student Plan"
             onCtaClick={() => {
-              // Navigate to student verification
               router.push('/student-verify');
             }}
             popular
@@ -348,12 +318,12 @@ export default function LandingPage() {
           />
         </div>
         
-        <div className="mt-8 p-4 bg-rando-input rounded-lg">
+        <div className="mt-8 p-4 bg-[#252540] rounded-lg">
           <div className="flex items-center space-x-3">
-            <Shield className="h-5 w-5 text-success" />
+            <span className="text-[#10B981]">🛡️</span>
             <div>
               <p className="font-medium">All plans include:</p>
-              <p className="text-sm text-text-secondary">
+              <p className="text-sm text-[#B8B8D1]">
                 Safe moderation, no time limits, and our community guidelines protection.
               </p>
             </div>
