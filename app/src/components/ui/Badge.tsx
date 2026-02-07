@@ -1,6 +1,4 @@
-// app/src/components/ui/Badge.tsx - SIMPLIFIED
 import React from 'react';
-import { cn } from '@/lib/utils';
 
 interface BadgeProps extends React.HTMLAttributes<HTMLDivElement> {
   variant?: 'default' | 'guest' | 'student' | 'premium' | 'success' | 'warning' | 'danger' | 'info' | 'campus';
@@ -15,14 +13,14 @@ const Badge = React.forwardRef<HTMLDivElement, BadgeProps>(
     const baseStyles = 'inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold transition-colors';
     
     const variants = {
-      default: 'bg-rando-input text-text-primary',
-      guest: 'bg-gradient-to-r from-rando-purple to-rando-purple-600 text-white',
-      student: 'bg-gradient-to-r from-rando-gold to-rando-gold-600 text-rando-bg',
-      premium: 'bg-gradient-to-r from-rando-coral to-rando-coral-600 text-white',
-      success: 'bg-success/20 text-success',
-      warning: 'bg-warning/20 text-warning',
-      danger: 'bg-danger/20 text-danger',
-      info: 'bg-info/20 text-info',
+      default: 'bg-[#252540] text-white',
+      guest: 'bg-gradient-to-r from-[#2E235E] to-[#4A3F8C] text-white',
+      student: 'bg-gradient-to-r from-[#D4AF37] to-[#F4D03F] text-[#0f0f1a]',
+      premium: 'bg-gradient-to-r from-[#FB6962] to-[#FF8C7F] text-white',
+      success: 'bg-[#10B981]/20 text-[#10B981]',
+      warning: 'bg-[#F59E0B]/20 text-[#F59E0B]',
+      danger: 'bg-[#EF4444]/20 text-[#EF4444]',
+      info: 'bg-[#3B82F6]/20 text-[#3B82F6]',
       campus: 'bg-gradient-to-r from-blue-600 to-purple-600 text-white',
     };
 
@@ -33,29 +31,26 @@ const Badge = React.forwardRef<HTMLDivElement, BadgeProps>(
     };
 
     const dotColors = {
-      default: 'bg-text-primary',
+      default: 'bg-white',
       guest: 'bg-white',
-      student: 'bg-rando-bg',
+      student: 'bg-[#0f0f1a]',
       premium: 'bg-white',
-      success: 'bg-success',
-      warning: 'bg-warning',
-      danger: 'bg-danger',
-      info: 'bg-info',
+      success: 'bg-[#10B981]',
+      warning: 'bg-[#F59E0B]',
+      danger: 'bg-[#EF4444]',
+      info: 'bg-[#3B82F6]',
       campus: 'bg-white',
     };
 
     return (
       <div
         ref={ref}
-        className={cn(baseStyles, variants[variant], sizes[size], dot && 'pl-2.5', className)}
+        className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${dot ? 'pl-2.5' : ''} ${className || ''}`}
         {...props}
       >
         {dot && (
           <span
-            className={cn(
-              'mr-1.5 h-2 w-2 rounded-full',
-              dotColors[variant]
-            )}
+            className={`mr-1.5 h-2 w-2 rounded-full ${dotColors[variant]}`}
           />
         )}
         {leftIcon && <span className="mr-1.5">{leftIcon}</span>}
