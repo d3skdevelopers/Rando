@@ -114,4 +114,55 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
   )
 }
 
-export { ToastProvider, useToast }
+// These components need to be defined or imported for the exports to work
+// For now, I'll create basic implementations or leave them as exports to be defined elsewhere
+
+export function ToastViewport({ children }: { children?: React.ReactNode }) {
+  return <div className="toast-viewport">{children}</div>
+}
+
+export function Toast({ children, ...props }: any) {
+  return <div className="toast" {...props}>{children}</div>
+}
+
+export function ToastTitle({ children }: { children: React.ReactNode }) {
+  return <div className="toast-title">{children}</div>
+}
+
+export function ToastDescription({ children }: { children: React.ReactNode }) {
+  return <div className="toast-description">{children}</div>
+}
+
+export function ToastClose({ onClick }: { onClick?: () => void }) {
+  return (
+    <button className="toast-close" onClick={onClick}>
+      ×
+    </button>
+  )
+}
+
+export function ToastAction({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) {
+  return (
+    <button className="toast-action" onClick={onClick}>
+      {children}
+    </button>
+  )
+}
+
+// Export types
+export type ToastProps = any // Define proper type as needed
+export type ToastActionElement = any // Define proper type as needed
+
+// Export all components and hooks
+export {
+  ToastProvider,
+  ToastViewport,
+  Toast,
+  ToastTitle,
+  ToastDescription,
+  ToastClose,
+  ToastAction,
+  useToast, // This is now properly exported
+  type ToastProps,
+  type ToastActionElement,
+}
