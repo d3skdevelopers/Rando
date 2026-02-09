@@ -8,6 +8,7 @@ import { ActionPanel } from '@/components/admin/moderation/ActionPanel'
 import type { Database } from '@/lib/database.types'
 
 type Report = Database['public']['Tables']['reports']['Row']
+type ReportUpdate = Database['public']['Tables']['reports']['Update']
 
 export default function ReportDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -22,13 +23,15 @@ export default function ReportDetailPage({ params }: { params: Promise<{ id: str
   }, [id])
   
   const handleAction = async (action: Database['public']['Enums']['moderation_action']) => {
+    const updateData: ReportUpdate = {
+      status: 'resolved',
+      action_taken: action,
+      resolved_at: new Date().toISOString()
+    }
+    
     await supabase
       .from('reports')
-      .update({ 
-        status: 'resolved' as const,
-        action_taken: action,
-        resolved_at: new Date().toISOString()
-      })
+      .update(updateData)
       .eq('id', id)
     
     if (report) {
