@@ -14,8 +14,6 @@ export default function ReportDetailPage({ params }: { params: Promise<{ id: str
   }, [id])
   
   const handleAction = async (action: string) => {
-    // TypeScript types are broken for update() method, but runtime works
-    // @ts-expect-error - Supabase types are incorrectly typed as 'never'
     const { error } = await supabase
       .from('reports')
       .update({ 
