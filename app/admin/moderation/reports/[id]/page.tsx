@@ -4,31 +4,7 @@ import { supabase } from '@/lib/supabase/client'
 import { DashboardLayout } from '@/components/admin/DashboardLayout'
 import { ReportReview } from '@/components/admin/moderation/ReportReview'
 import { ActionPanel } from '@/components/admin/moderation/ActionPanel'
-
-// Exact types from your database
-type ModerationAction = 'warn' | 'mute' | 'ban_temporary' | 'ban_permanent' | 'escalate'
-type ReportStatus = 'pending' | 'reviewed' | 'resolved' | 'dismissed'
-
-interface Report {
-  id: string
-  reporter_id: string
-  reporter_is_guest: boolean
-  reported_user_id: string
-  reported_user_is_guest: boolean
-  session_id: string | null
-  reason: string
-  category: string
-  evidence: string | null
-  status: ReportStatus
-  priority: number
-  reviewed_by: string | null
-  review_notes: string | null
-  action_taken: ModerationAction | null  // ← CAN BE NULL
-  action_details: any | null
-  resolved_at: string | null
-  created_at: string
-  updated_at: string
-}
+import type { Report, ReportUpdate, ReportStatus, ModerationAction } from '@/lib/supabase/client'
 
 export default function ReportDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -38,15 +14,13 @@ export default function ReportDetailPage({ params }: { params: Promise<{ id: str
     supabase.from('reports').select('*').eq('id', id).single().then(({ data }) => data && setReport(data)) 
   }, [id])
   
-  const handleAction = async (action: ModerationAction) => {  // ← action CANNOT be null here
-    // Type assertion for the update
-    const updateData = {
+  const handleAction = async (action: ModerationAction) => {
+    const updateData: ReportUpdate = {
       status: 'resolved' as ReportStatus,
-      action_taken: action as ModerationAction,  // ← This is NOT null
+      action_taken: action,
       resolved_at: new Date().toISOString()
     }
     
-    // @ts-ignore - Bypass broken Supabase types
     const { error } = await supabase
       .from('reports')
       .update(updateData)
