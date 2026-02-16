@@ -48,109 +48,46 @@ export function ChatSidebar({
     refresh
   } = useFriends(currentUserId)
 
-  // Log all important state changes
+  // Force refresh when sidebar opens
   useEffect(() => {
     if (isOpen) {
-      addDebugLog(`📱 SIDEBAR OPENED - User: ${currentUserId?.slice(0, 8)}..., Partner: ${partnerName} (${partnerId?.slice(0, 8)}...)`)
+      refresh()
     }
   }, [isOpen])
-
-  useEffect(() => {
-    if (activeTab) {
-      addDebugLog(`📌 Tab changed to: ${activeTab}`)
-    }
-  }, [activeTab])
-
-  useEffect(() => {
-    addDebugLog(`👥 Friends loaded: ${friends.length}`)
-  }, [friends])
-
-  useEffect(() => {
-    addDebugLog(`📨 Pending requests: ${pendingRequests.length}, Sent: ${sentRequests.length}`)
-  }, [pendingRequests, sentRequests])
 
   const addDebugLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString()
     const log = `[${timestamp}] ${message}`
     console.log(log)
-    setDebugLogs(prev => [log, ...prev].slice(0, 20)) // Keep last 20 logs
+    setDebugLogs(prev => [log, ...prev].slice(0, 20))
   }
 
   const handleAddFriend = async () => {
-    addDebugLog(`➕ ADD FRIEND button clicked - Partner: ${partnerName} (${partnerId?.slice(0, 8)}...)`)
-    
     if (!partnerId) {
-      addDebugLog('❌ Add friend failed - no partnerId')
-      alert('Cannot add friend: Partner ID not found. Please wait a moment and try again.')
+      alert('Cannot add friend: Partner ID not found')
       return
     }
     
-    addDebugLog(`📨 Sending friend request from ${currentUserId?.slice(0, 8)} to ${partnerId?.slice(0, 8)}`)
     const success = await sendFriendRequest(partnerId)
     if (success) {
-      addDebugLog(`✅ Friend request sent successfully to ${partnerName}`)
-      alert(`✅ Friend request sent to ${partnerName}!`)
+      alert(`Friend request sent to ${partnerName}!`)
       setActiveTab('requests')
-    } else {
-      addDebugLog('❌ Failed to send friend request')
-      alert('❌ Failed to send friend request')
+      refresh()
     }
   }
 
-  const handleTabChange = (tab: typeof activeTab) => {
-    addDebugLog(`📌 Switching to ${tab} tab`)
-    setActiveTab(tab)
+  const handleAccept = async (requestId: string) => {
+    const success = await acceptRequest(requestId)
+    if (success) {
+      refresh()
+    }
   }
 
-  const handleReport = () => {
-    addDebugLog(`⚠️ Report button clicked for ${partnerName}`)
-    onReport()
-  }
-
-  const handleBlock = () => {
-    addDebugLog(`🚫 Block button clicked for ${partnerName}`)
-    onBlock()
-  }
-
-  const handleClose = () => {
-    addDebugLog(`🚪 Sidebar closed`)
-    onClose()
-  }
-
-  const handleRefresh = () => {
-    addDebugLog(`🔄 Manual refresh triggered`)
-    refresh()
-  }
-
-  // Debug function to check database directly
-  const debugCheckDatabase = async () => {
-    addDebugLog(`🔍 DEBUG CHECK STARTED`)
-    addDebugLog(`👤 Current userId: ${currentUserId?.slice(0, 8)}...`)
-    addDebugLog(`👥 Partner: ${partnerName} (${partnerId?.slice(0, 8)}...)`)
-    addDebugLog(`📊 State - Friends: ${friends.length}, Pending: ${pendingRequests.length}, Sent: ${sentRequests.length}`)
-    
-    // Direct database check
-    const { data: directCheck } = await supabase
-      .from('friends')
-      .select(`
-        *,
-        requester:guest_sessions!user_id(display_name),
-        friend:guest_sessions!friend_id(display_name)
-      `)
-      .or(`user_id.eq.${currentUserId},friend_id.eq.${currentUserId}`)
-      .order('created_at', { ascending: false })
-    
-    addDebugLog(`📊 DATABASE FOUND: ${directCheck?.length || 0} records`)
-    directCheck?.forEach((record, i) => {
-      const isSent = record.user_id === currentUserId
-      const otherName = isSent 
-        ? record.friend?.[0]?.display_name 
-        : record.requester?.[0]?.display_name
-      addDebugLog(`  ${i+1}. ${isSent ? 'SENT to' : 'RECEIVED from'} ${otherName} (${record.status})`)
-    })
-    
-    console.log('📊 FULL DATABASE CHECK:', directCheck)
-    alert(`Check debug logs at top of sidebar\nFound ${directCheck?.length || 0} records in database`)
+  const handleReject = async (requestId: string) => {
+    const success = await rejectRequest(requestId)
+    if (success) {
+      refresh()
+    }
   }
 
   if (!isOpen) return null
@@ -170,39 +107,6 @@ export function ChatSidebar({
       animation: 'slideIn 0.3s ease',
       boxShadow: '-5px 0 30px rgba(0,0,0,0.5)',
     }}>
-      {/* DEBUG LOGS - AT THE VERY TOP */}
-      <div style={{
-        background: '#1a1a2e',
-        borderBottom: '2px solid #7c3aed',
-        padding: '8px 12px',
-        maxHeight: '200px',
-        overflowY: 'auto',
-        fontFamily: 'monospace',
-        fontSize: '11px',
-        color: '#0f0',
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-          <strong style={{ color: '#7c3aed' }}>🐞 EVENT LOG</strong>
-          <button 
-            onClick={() => setDebugLogs([])}
-            style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '11px' }}
-          >
-            Clear
-          </button>
-        </div>
-        {debugLogs.length === 0 ? (
-          <div style={{ color: '#666', textAlign: 'center', padding: '10px' }}>
-            No events yet. Click buttons to see logs.
-          </div>
-        ) : (
-          debugLogs.map((log, i) => (
-            <div key={i} style={{ marginBottom: '2px', borderBottom: '1px solid #333', paddingBottom: '2px' }}>
-              {log}
-            </div>
-          ))
-        )}
-      </div>
-
       {/* Header */}
       <div style={{
         padding: '20px',
@@ -221,7 +125,7 @@ export function ChatSidebar({
           RANDO
         </h3>
         <button
-          onClick={handleClose}
+          onClick={onClose}
           style={{
             background: 'transparent',
             border: '1px solid rgba(124,58,237,0.2)',
@@ -247,7 +151,7 @@ export function ChatSidebar({
         padding: '0 16px',
       }}>
         <button
-          onClick={() => handleTabChange('info')}
+          onClick={() => setActiveTab('info')}
           style={{
             flex: 1,
             padding: '12px 8px',
@@ -262,7 +166,7 @@ export function ChatSidebar({
           Chat Info
         </button>
         <button
-          onClick={() => handleTabChange('friends')}
+          onClick={() => setActiveTab('friends')}
           style={{
             flex: 1,
             padding: '12px 8px',
@@ -277,7 +181,7 @@ export function ChatSidebar({
           Friends {friends.length > 0 && `(${friends.length})`}
         </button>
         <button
-          onClick={() => handleTabChange('requests')}
+          onClick={() => setActiveTab('requests')}
           style={{
             flex: 1,
             padding: '12px 8px',
@@ -346,15 +250,6 @@ export function ChatSidebar({
               }}>
                 {partnerName}
               </h4>
-              {partnerId && (
-                <p style={{
-                  fontSize: '10px',
-                  color: '#60607a',
-                  marginTop: '4px',
-                }}>
-                  ID: {partnerId.slice(0, 8)}...
-                </p>
-              )}
 
               <div style={{
                 display: 'grid',
@@ -391,26 +286,19 @@ export function ChatSidebar({
                   opacity: partnerId ? 1 : 0.5,
                   cursor: partnerId ? 'pointer' : 'not-allowed',
                 }}
-                onMouseEnter={(e) => partnerId && (e.currentTarget.style.background = 'rgba(124,58,237,0.1)')}
-                onMouseLeave={(e) => partnerId && (e.currentTarget.style.background = 'transparent')}
                 disabled={!partnerId}
               >
                 ➕ Add {partnerName} as Friend
-                {!partnerId && ' (loading...)'}
               </button>
               <button
-                onClick={handleReport}
+                onClick={onReport}
                 style={actionButtonStyle}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(124,58,237,0.1)'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
                 ⚠️ Report User
               </button>
               <button
-                onClick={handleBlock}
+                onClick={onBlock}
                 style={{...actionButtonStyle, color: '#ef4444', borderColor: 'rgba(239,68,68,0.2)'}}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239,68,68,0.1)'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
                 🚫 Block User
               </button>
@@ -440,9 +328,6 @@ export function ChatSidebar({
               }}>
                 <div style={{ fontSize: '40px', marginBottom: '12px' }}>👥</div>
                 <p>No friends yet</p>
-                <p style={{ fontSize: '12px', marginTop: '8px' }}>
-                  Add friends during chat to see them here
-                </p>
               </div>
             ) : (
               friends.map(friend => (
@@ -458,10 +343,7 @@ export function ChatSidebar({
                     </div>
                   </div>
                   <button
-                    onClick={() => {
-                      addDebugLog(`🗑️ Removing friend: ${friend.display_name}`)
-                      removeFriend(friend.friend_id)
-                    }}
+                    onClick={() => removeFriend(friend.friend_id)}
                     style={removeButtonStyle}
                   >
                     ✕
@@ -475,50 +357,21 @@ export function ChatSidebar({
         {/* REQUESTS TAB */}
         {activeTab === 'requests' && (
           <div>
-            {/* Manual refresh button */}
             <button
-              onClick={handleRefresh}
+              onClick={refresh}
               style={{
                 width: '100%',
                 padding: '8px',
-                marginBottom: '8px',
+                marginBottom: '16px',
                 background: 'rgba(124,58,237,0.1)',
                 border: '1px solid rgba(124,58,237,0.2)',
                 borderRadius: '6px',
                 color: '#a0a0b0',
                 fontSize: '12px',
                 cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px',
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(124,58,237,0.2)'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(124,58,237,0.1)'}
-            >
-              <span>🔄</span> Refresh Requests
-            </button>
-
-            {/* Debug Button */}
-            <button
-              onClick={debugCheckDatabase}
-              style={{
-                width: '100%',
-                padding: '8px',
-                marginBottom: '16px',
-                background: '#ef4444',
-                border: 'none',
-                borderRadius: '6px',
-                color: 'white',
-                fontSize: '12px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px',
               }}
             >
-              <span>🐞</span> Debug: Check Database
+              🔄 Refresh
             </button>
 
             <h4 style={{
@@ -557,19 +410,13 @@ export function ChatSidebar({
                     </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <button
-                        onClick={() => {
-                          addDebugLog(`✅ Accepting request from ${request.display_name}`)
-                          acceptRequest(request.id)
-                        }}
+                        onClick={() => handleAccept(request.id)}
                         style={acceptButtonStyle}
                       >
                         Accept
                       </button>
                       <button
-                        onClick={() => {
-                          addDebugLog(`❌ Rejecting request from ${request.display_name}`)
-                          rejectRequest(request.id)
-                        }}
+                        onClick={() => handleReject(request.id)}
                         style={rejectButtonStyle}
                       >
                         Reject
@@ -623,44 +470,18 @@ export function ChatSidebar({
         )}
       </div>
 
-      {/* Settings Button - Bottom Right */}
+      {/* Settings Button */}
       <div style={{
         padding: '16px',
         borderTop: '1px solid rgba(124,58,237,0.2)',
       }}>
         <Link href="/settings/profile" style={{ textDecoration: 'none' }}>
-          <button
-            onClick={() => addDebugLog(`⚙️ Settings button clicked`)}
-            style={{
-              width: '100%',
-              padding: '12px',
-              background: 'rgba(124,58,237,0.1)',
-              border: '1px solid rgba(124,58,237,0.2)',
-              borderRadius: '8px',
-              color: '#f0f0f0',
-              fontSize: '14px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px',
-              transition: 'all 0.2s',
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(124,58,237,0.2)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(124,58,237,0.1)'}
-          >
+          <button style={settingsButtonStyle}>
             <span style={{ fontSize: '18px' }}>⚙️</span>
             Settings
           </button>
         </Link>
       </div>
-
-      <style>{`
-        @keyframes slideIn {
-          from { transform: translateX(100%); }
-          to { transform: translateX(0); }
-        }
-      `}</style>
     </div>
   )
 }
@@ -735,4 +556,20 @@ const rejectButtonStyle = {
   color: '#ef4444',
   cursor: 'pointer',
   fontSize: '13px',
+}
+
+const settingsButtonStyle = {
+  width: '100%',
+  padding: '12px',
+  background: 'rgba(124,58,237,0.1)',
+  border: '1px solid rgba(124,58,237,0.2)',
+  borderRadius: '8px',
+  color: '#f0f0f0',
+  fontSize: '14px',
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '8px',
+  transition: 'all 0.2s',
 }
