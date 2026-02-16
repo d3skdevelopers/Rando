@@ -24,7 +24,7 @@ export function useFriends(userId: string | undefined) {
     loadRequests()
     setupRealtime()
     
-    // Set up polling as backup (every 5 seconds)
+    // Poll every 5 seconds as backup
     pollingRef.current = setInterval(() => {
       console.log('🔄 Polling fallback: checking for updates')
       loadRequests()
@@ -33,7 +33,6 @@ export function useFriends(userId: string | undefined) {
 
     return () => {
       if (channelRef.current) {
-        console.log('🧹 Cleaning up friends channel')
         supabase.removeChannel(channelRef.current)
       }
       if (pollingRef.current) {
@@ -43,120 +42,119 @@ export function useFriends(userId: string | undefined) {
   }, [userId])
 
   const loadFriends = async () => {
-    setLoading(true)
-    console.log('🔍 Loading friends for user:', userId)
+    if (!userId) return
     
     const { data, error } = await supabase
       .from('friends')
-      .select(`
-        id,
-        friend_id,
-        status,
-        created_at,
-        friend:guest_sessions!friend_id(
-          display_name
-        )
-      `)
+      .select('*')
       .eq('user_id', userId)
       .eq('status', 'accepted')
-      .order('created_at', { ascending: false })
 
     if (error) {
       console.error('❌ Error loading friends:', error)
-      setError(error.message)
     } else {
-      console.log('✅ Friends loaded:', data?.length || 0)
-      setFriends(data?.map(f => ({
-        id: f.id,
-        friend_id: f.friend_id,
-        display_name: f.friend?.[0]?.display_name || 'Unknown',
-        created_at: f.created_at
-      })) || [])
+      // Get display names for each friend
+      const enhancedFriends = []
+      for (const friend of data || []) {
+        const { data: userData } = await supabase
+          .from('guest_sessions')
+          .select('display_name')
+          .eq('id', friend.friend_id)
+          .single()
+        
+        enhancedFriends.push({
+          id: friend.id,
+          friend_id: friend.friend_id,
+          display_name: userData?.display_name || 'Unknown',
+          created_at: friend.created_at
+        })
+      }
+      setFriends(enhancedFriends)
     }
-    setLoading(false)
   }
 
   const loadRequests = async () => {
-    console.log('🔍 Loading requests for user:', userId)
+    if (!userId) return
     
     // Requests SENT by me
     const { data: sent, error: sentError } = await supabase
       .from('friends')
-      .select(`
-        id,
-        friend_id,
-        created_at,
-        friend:guest_sessions!friend_id(display_name)
-      `)
+      .select('*')
       .eq('user_id', userId)
       .eq('status', 'pending')
 
     if (sentError) {
       console.error('❌ Error loading sent requests:', sentError)
     } else {
-      console.log('✅ Sent requests loaded:', sent?.length || 0)
-      setSentRequests(sent?.map(r => ({
-        id: r.id,
-        friend_id: r.friend_id,
-        display_name: r.friend?.[0]?.display_name || 'Unknown',
-        created_at: r.created_at
-      })) || [])
+      const enhancedSent = []
+      for (const req of sent || []) {
+        const { data: userData } = await supabase
+          .from('guest_sessions')
+          .select('display_name')
+          .eq('id', req.friend_id)
+          .single()
+        
+        enhancedSent.push({
+          id: req.id,
+          friend_id: req.friend_id,
+          display_name: userData?.display_name || 'Unknown',
+          created_at: req.created_at
+        })
+      }
+      setSentRequests(enhancedSent)
     }
 
     // Requests RECEIVED by me
     const { data: received, error: receivedError } = await supabase
       .from('friends')
-      .select(`
-        id,
-        user_id,
-        created_at,
-        requester:guest_sessions!user_id(display_name)
-      `)
+      .select('*')
       .eq('friend_id', userId)
       .eq('status', 'pending')
 
     if (receivedError) {
       console.error('❌ Error loading received requests:', receivedError)
     } else {
-      console.log('✅ Received requests loaded:', received?.length || 0)
-      setPendingRequests(received?.map(r => ({
-        id: r.id,
-        requester_id: r.user_id,
-        display_name: r.requester?.[0]?.display_name || 'Unknown',
-        created_at: r.created_at
-      })) || [])
+      const enhancedReceived = []
+      for (const req of received || []) {
+        const { data: userData } = await supabase
+          .from('guest_sessions')
+          .select('display_name')
+          .eq('id', req.user_id)
+          .single()
+        
+        enhancedReceived.push({
+          id: req.id,
+          requester_id: req.user_id,
+          display_name: userData?.display_name || 'Unknown',
+          created_at: req.created_at
+        })
+      }
+      setPendingRequests(enhancedReceived)
     }
   }
 
   const setupRealtime = () => {
     if (channelRef.current || !userId) return
 
-    console.log('🔌 Setting up realtime for friends with userId:', userId)
-    
-    // Create a unique channel name
-    const channelName = `friends-${userId}-${Date.now()}`
-    const channel = supabase.channel(channelName)
-    
+    const channel = supabase.channel(`friends-${userId}-${Date.now()}`)
     channelRef.current = channel
 
-    // Listen for ALL friend-related changes - using a more direct approach
     channel
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
         table: 'friends',
         filter: `friend_id=eq.${userId}`
-      }, (payload) => {
-        console.log('📨 New friend request RECEIVED:', payload)
-        loadRequests() // Reload immediately
+      }, () => {
+        loadRequests()
+        loadFriends()
       })
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
         table: 'friends',
         filter: `user_id=eq.${userId}`
-      }, (payload) => {
-        console.log('📨 New friend request SENT:', payload)
+      }, () => {
         loadRequests()
       })
       .on('postgres_changes', {
@@ -164,8 +162,7 @@ export function useFriends(userId: string | undefined) {
         schema: 'public',
         table: 'friends',
         filter: `friend_id=eq.${userId}`
-      }, (payload) => {
-        console.log('📨 Friend request UPDATED (as friend):', payload)
+      }, () => {
         loadRequests()
         loadFriends()
       })
@@ -174,40 +171,18 @@ export function useFriends(userId: string | undefined) {
         schema: 'public',
         table: 'friends',
         filter: `user_id=eq.${userId}`
-      }, (payload) => {
-        console.log('📨 Friend request UPDATED (as user):', payload)
+      }, () => {
         loadRequests()
         loadFriends()
       })
-      .subscribe((status) => {
-        console.log('📡 Friends channel status:', status)
-        
-        // If subscription fails, retry after 2 seconds
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.log('❌ Channel error, retrying in 2s...')
-          setTimeout(() => {
-            if (channelRef.current) {
-              supabase.removeChannel(channelRef.current)
-              channelRef.current = null
-              setupRealtime()
-            }
-          }, 2000)
-        }
-      })
+      .subscribe()
   }
 
-  // Send friend request
   const sendFriendRequest = async (friendId: string) => {
-    if (!userId) {
-      console.error('❌ Cannot send request: No userId')
-      alert('Cannot send friend request: You need to be logged in')
-      return false
-    }
-
-    console.log('📨 Sending friend request:', { from: userId, to: friendId })
+    if (!userId) return false
 
     try {
-      // Check if they're already friends or request exists
+      // Check if already exists
       const { data: existing } = await supabase
         .from('friends')
         .select('*')
@@ -215,12 +190,11 @@ export function useFriends(userId: string | undefined) {
         .maybeSingle()
 
       if (existing) {
-        console.log('⚠️ Friend relationship already exists:', existing)
         alert(`Already ${existing.status === 'accepted' ? 'friends' : 'have a pending request'} with this user`)
         return false
       }
 
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('friends')
         .insert({
           user_id: userId,
@@ -228,69 +202,48 @@ export function useFriends(userId: string | undefined) {
           status: 'pending',
           created_at: new Date().toISOString()
         })
-        .select()
-        .single()
 
-      if (error) {
-        console.error('❌ Error sending friend request:', error)
-        alert(`Failed to send friend request: ${error.message}`)
-        return false
-      }
+      if (error) throw error
 
-      console.log('✅ Friend request sent successfully:', data)
-      
-      // Immediately reload sent requests
       await loadRequests()
-      
       return true
     } catch (err: any) {
-      console.error('❌ Unexpected error:', err)
-      alert('An unexpected error occurred')
+      console.error('❌ Error sending friend request:', err)
       return false
     }
   }
 
   const acceptRequest = async (requestId: string) => {
-    console.log('✅ Accepting request:', requestId)
     try {
       const { error } = await supabase
         .from('friends')
-        .update({ status: 'accepted', updated_at: new Date().toISOString() })
+        .update({ status: 'accepted' })
         .eq('id', requestId)
 
-      if (error) {
-        console.error('❌ Error accepting request:', error)
-        alert(`Failed to accept: ${error.message}`)
-        return false
-      }
+      if (error) throw error
 
       await loadFriends()
       await loadRequests()
       return true
     } catch (err: any) {
-      console.error('❌ Unexpected error:', err)
+      console.error('❌ Error accepting request:', err)
       return false
     }
   }
 
   const rejectRequest = async (requestId: string) => {
-    console.log('❌ Rejecting request:', requestId)
     try {
       const { error } = await supabase
         .from('friends')
         .delete()
         .eq('id', requestId)
 
-      if (error) {
-        console.error('❌ Error rejecting request:', error)
-        alert(`Failed to reject: ${error.message}`)
-        return false
-      }
+      if (error) throw error
 
       await loadRequests()
       return true
     } catch (err: any) {
-      console.error('❌ Unexpected error:', err)
+      console.error('❌ Error rejecting request:', err)
       return false
     }
   }
@@ -298,7 +251,6 @@ export function useFriends(userId: string | undefined) {
   const removeFriend = async (friendId: string) => {
     if (!userId) return false
 
-    console.log('🗑️ Removing friend:', friendId)
     try {
       const { error } = await supabase
         .from('friends')
@@ -306,23 +258,17 @@ export function useFriends(userId: string | undefined) {
         .eq('user_id', userId)
         .eq('friend_id', friendId)
 
-      if (error) {
-        console.error('❌ Error removing friend:', error)
-        alert(`Failed to remove: ${error.message}`)
-        return false
-      }
+      if (error) throw error
 
       await loadFriends()
       return true
     } catch (err: any) {
-      console.error('❌ Unexpected error:', err)
+      console.error('❌ Error removing friend:', err)
       return false
     }
   }
 
-  // Manual refresh function
   const refresh = () => {
-    console.log('🔄 Manually refreshing friends data')
     loadFriends()
     loadRequests()
   }
