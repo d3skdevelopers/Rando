@@ -30,6 +30,9 @@ export default function ChatInterface({ sessionId }: ChatInterfaceProps) {
 
   const containerRef = useRef<HTMLDivElement>(null)
 
+  // Find partner ID from messages (for friend requests)
+  const partnerId = chat.messages.find(m => m.sender_id !== chat.guestSession?.guest_id)?.sender_id
+
   // Update stats
   useEffect(() => {
     if (chat.messages.length > 0) {
@@ -137,7 +140,7 @@ export default function ChatInterface({ sessionId }: ChatInterfaceProps) {
         @keyframes float2 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-40px,30px)} }
       `}</style>
 
-      {/* Header - Now just receives partnerName from useChat */}
+      {/* Header */}
       <ChatHeader
         partnerName={chat.partnerName}
         isOnline={true}
@@ -197,11 +200,12 @@ export default function ChatInterface({ sessionId }: ChatInterfaceProps) {
         />
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar - Now with partnerId for friend requests */}
       <ChatSidebar
         isOpen={showSidebar}
         onClose={() => setShowSidebar(false)}
         partnerName={chat.partnerName || ''}
+        partnerId={partnerId}
         chatDuration={chatDuration}
         messageCount={messageCount}
         onReport={() => {
