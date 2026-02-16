@@ -45,15 +45,19 @@ export function ChatSidebar({
 
   const handleAddFriend = async () => {
     if (!partnerId) {
-      alert('Cannot add friend: Partner ID not found')
+      alert('Cannot add friend: Partner ID not found. Please wait a moment and try again.')
+      console.log('❌ Add friend failed - no partnerId', { partnerId, guestId, identity })
       return
     }
     
+    console.log('📨 Sending friend request to:', partnerId)
     const success = await sendFriendRequest(partnerId)
     if (success) {
-      alert(`Friend request sent to ${partnerName}!`)
+      alert(`✅ Friend request sent to ${partnerName}!`)
+      // Switch to requests tab to show sent request
+      setActiveTab('requests')
     } else {
-      alert('Failed to send friend request')
+      alert('❌ Failed to send friend request')
     }
   }
 
@@ -162,18 +166,18 @@ export function ChatSidebar({
           }}
         >
           Requests
-          {pendingRequests.length > 0 && (
+          {(pendingRequests.length > 0 || sentRequests.length > 0) && (
             <span style={{
               position: 'absolute',
               top: '8px',
               right: '20px',
-              background: '#ef4444',
+              background: pendingRequests.length > 0 ? '#ef4444' : '#f59e0b',
               color: 'white',
               fontSize: '10px',
               padding: '2px 6px',
               borderRadius: '10px',
             }}>
-              {pendingRequests.length}
+              {pendingRequests.length + sentRequests.length}
             </span>
           )}
         </button>
@@ -217,6 +221,15 @@ export function ChatSidebar({
               }}>
                 {partnerName}
               </h4>
+              {partnerId && (
+                <p style={{
+                  fontSize: '10px',
+                  color: '#60607a',
+                  marginTop: '4px',
+                }}>
+                  ID: {partnerId.slice(0, 8)}...
+                </p>
+              )}
 
               <div style={{
                 display: 'grid',
@@ -248,11 +261,17 @@ export function ChatSidebar({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <button
                 onClick={handleAddFriend}
-                style={actionButtonStyle}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(124,58,237,0.1)'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                style={{
+                  ...actionButtonStyle,
+                  opacity: partnerId ? 1 : 0.5,
+                  cursor: partnerId ? 'pointer' : 'not-allowed',
+                }}
+                onMouseEnter={(e) => partnerId && (e.currentTarget.style.background = 'rgba(124,58,237,0.1)')}
+                onMouseLeave={(e) => partnerId && (e.currentTarget.style.background = 'transparent')}
+                disabled={!partnerId}
               >
                 ➕ Add {partnerName} as Friend
+                {!partnerId && ' (loading...)'}
               </button>
               <button
                 onClick={onReport}
@@ -322,32 +341,6 @@ export function ChatSidebar({
                 </div>
               ))
             )}
-
-            {/* Sent Requests */}
-            {sentRequests.length > 0 && (
-              <>
-                <h4 style={{
-                  fontSize: '14px',
-                  color: '#7c3aed',
-                  margin: '16px 0 8px',
-                }}>
-                  Sent Requests
-                </h4>
-                {sentRequests.map(req => (
-                  <div key={req.id} style={{...friendItemStyle, opacity: 0.7}}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={friendAvatarStyle}>
-                        {req.display_name[0]?.toUpperCase()}
-                      </div>
-                      <div>
-                        <div style={{ color: '#f0f0f0' }}>{req.display_name}</div>
-                        <div style={{ fontSize: '10px', color: '#f59e0b' }}>⏳ Pending</div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </>
-            )}
           </div>
         )}
 
@@ -363,7 +356,78 @@ export function ChatSidebar({
               Friend Requests
             </h4>
 
-            {pendingRequests.length === 0 ? (
+            {/* Received Requests */}
+            {pendingRequests.length > 0 && (
+              <>
+                <h5 style={{
+                  fontSize: '13px',
+                  color: '#7c3aed',
+                  marginBottom: '8px',
+                }}>
+                  Received ({pendingRequests.length})
+                </h5>
+                {pendingRequests.map(request => (
+                  <div key={request.id} style={requestItemStyle}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                      <div style={friendAvatarStyle}>
+                        {request.display_name[0]?.toUpperCase()}
+                      </div>
+                      <div>
+                        <div style={{ color: '#f0f0f0', fontWeight: 500 }}>
+                          {request.display_name}
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#f59e0b' }}>
+                          ⏳ Wants to connect
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={() => acceptRequest(request.id)}
+                        style={acceptButtonStyle}
+                      >
+                        Accept
+                      </button>
+                      <button
+                        onClick={() => rejectRequest(request.id)}
+                        style={rejectButtonStyle}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+
+            {/* Sent Requests */}
+            {sentRequests.length > 0 && (
+              <>
+                <h5 style={{
+                  fontSize: '13px',
+                  color: '#f59e0b',
+                  marginBottom: '8px',
+                  marginTop: pendingRequests.length > 0 ? '20px' : 0,
+                }}>
+                  Sent ({sentRequests.length})
+                </h5>
+                {sentRequests.map(req => (
+                  <div key={req.id} style={{...friendItemStyle, opacity: 0.7}}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={friendAvatarStyle}>
+                        {req.display_name[0]?.toUpperCase()}
+                      </div>
+                      <div>
+                        <div style={{ color: '#f0f0f0' }}>{req.display_name}</div>
+                        <div style={{ fontSize: '10px', color: '#f59e0b' }}>⏳ Pending</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+
+            {pendingRequests.length === 0 && sentRequests.length === 0 && (
               <div style={{
                 textAlign: 'center',
                 color: '#60607a',
@@ -374,38 +438,6 @@ export function ChatSidebar({
                 <div style={{ fontSize: '40px', marginBottom: '12px' }}>📭</div>
                 <p>No pending requests</p>
               </div>
-            ) : (
-              pendingRequests.map(request => (
-                <div key={request.id} style={requestItemStyle}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                    <div style={friendAvatarStyle}>
-                      {request.display_name[0]?.toUpperCase()}
-                    </div>
-                    <div>
-                      <div style={{ color: '#f0f0f0', fontWeight: 500 }}>
-                        {request.display_name}
-                      </div>
-                      <div style={{ fontSize: '11px', color: '#f59e0b' }}>
-                        ⏳ Wants to connect
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      onClick={() => acceptRequest(request.id)}
-                      style={acceptButtonStyle}
-                    >
-                      Accept
-                    </button>
-                    <button
-                      onClick={() => rejectRequest(request.id)}
-                      style={rejectButtonStyle}
-                    >
-                      Reject
-                    </button>
-                  </div>
-                </div>
-              ))
             )}
           </div>
         )}
