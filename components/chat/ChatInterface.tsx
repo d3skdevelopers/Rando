@@ -32,7 +32,7 @@ export default function ChatInterface({ sessionId }: ChatInterfaceProps) {
 
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Load partner ID directly from session (FIXED)
+  // Load partner ID directly from session
   useEffect(() => {
     const loadPartnerId = async () => {
       if (!chat.guestSession?.guest_id) {
@@ -45,7 +45,7 @@ export default function ChatInterface({ sessionId }: ChatInterfaceProps) {
 
       const { data: session, error } = await supabase
         .from('chat_sessions')
-        .select('user1_id, user2_id')
+        .select('user1_id, user2_id, user1_display_name, user2_display_name')
         .eq('id', sessionId)
         .single()
 
@@ -56,12 +56,13 @@ export default function ChatInterface({ sessionId }: ChatInterfaceProps) {
 
       console.log('📊 Session data:', session)
 
+      // CORRECT LOGIC: partner is the OTHER user
       if (session.user1_id === chat.guestSession.guest_id) {
         setPartnerId(session.user2_id)
-        console.log('✅ Partner ID set (user2):', session.user2_id)
+        console.log('✅ Partner ID is user2:', session.user2_id, session.user2_display_name)
       } else {
         setPartnerId(session.user1_id)
-        console.log('✅ Partner ID set (user1):', session.user1_id)
+        console.log('✅ Partner ID is user1:', session.user1_id, session.user1_display_name)
       }
     }
 
@@ -84,6 +85,7 @@ export default function ChatInterface({ sessionId }: ChatInterfaceProps) {
   useEffect(() => {
     if (chat.partnerLeft && !leftAt) {
       setLeftAt(new Date().toISOString())
+      console.log('👋 Partner left at:', leftAt)
     }
   }, [chat.partnerLeft, leftAt])
 
@@ -203,6 +205,7 @@ export default function ChatInterface({ sessionId }: ChatInterfaceProps) {
           currentUserId={chat.guestSession?.guest_id}
           currentUserName={chat.guestSession?.display_name}
           partnerLeft={chat.partnerLeft}
+          partnerName={chat.partnerName}
           onImageClick={(url) => setSelectedImage(url)}
           messagesEndRef={chat.messagesEndRef}
           leftAt={leftAt}
@@ -216,8 +219,8 @@ export default function ChatInterface({ sessionId }: ChatInterfaceProps) {
         )}
       </div>
 
-      {/* Input Area */}
-      {!chat.partnerLeft && (
+      {/* Input Area - Hidden when partner leaves */}
+      {!chat.partnerLeft ? (
         <ChatInput
           sessionId={sessionId}
           onSendMessage={async (content) => {
@@ -227,6 +230,31 @@ export default function ChatInterface({ sessionId }: ChatInterfaceProps) {
           isSending={chat.isSending}
           onEditImage={(url) => setEditImage(url)}
         />
+      ) : (
+        <div style={{
+          padding: '16px',
+          background: 'rgba(10,10,15,0.95)',
+          borderTop: '1px solid rgba(124,58,237,0.2)',
+          textAlign: 'center',
+        }}>
+          <p style={{ color: '#60607a', marginBottom: '12px' }}>
+            👋 {chat.partnerName} left the chat
+          </p>
+          <button
+            onClick={() => router.push('/matchmaking')}
+            style={{
+              padding: '10px 20px',
+              background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '14px',
+            }}
+          >
+            Find New Chat
+          </button>
+        </div>
       )}
 
       {/* Safety Warning */}
