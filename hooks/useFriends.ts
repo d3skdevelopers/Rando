@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { RealtimeChannel } from '@supabase/supabase-js'
 
@@ -57,7 +57,7 @@ export function useFriends(userId: string | undefined) {
         display_name: f.friend?.[0]?.display_name || 'Unknown',
         status: f.status,
         created_at: f.created_at,
-        is_online: false // Will be updated by presence
+        is_online: false
       }))
       setFriends(formatted)
     }
@@ -126,7 +126,7 @@ export function useFriends(userId: string | undefined) {
         table: 'friends',
         filter: `friend_id=eq.${userId}`
       }, (payload) => {
-        loadRequests() // Reload when new request arrives
+        loadRequests()
       })
 
     // Listen for request acceptance
@@ -162,7 +162,7 @@ export function useFriends(userId: string | undefined) {
 
       if (error) throw error
       
-      await loadRequests() // Refresh
+      await loadRequests()
       return true
     } catch (err: any) {
       setError(err.message)
