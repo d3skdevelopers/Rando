@@ -7,7 +7,6 @@ import { RealtimeChannel } from '@supabase/supabase-js'
 export function useFriends(userId: string | undefined) {
   const [friends, setFriends] = useState<any[]>([])
   const [pendingRequests, setPendingRequests] = useState<any[]>([])
-  const [sentRequests, setSentRequests] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
@@ -44,10 +43,11 @@ export function useFriends(userId: string | undefined) {
   const loadFriends = async () => {
     if (!userId) return
     
+    // Get all accepted friendships where user is either user_id or friend_id
     const { data, error } = await supabase
       .from('friends')
       .select('*')
-      .eq('user_id', userId)
+      .or(`user_id.eq.${userId},friend_id.eq.${userId}`)
       .eq('status', 'accepted')
 
     if (error) {
@@ -55,18 +55,20 @@ export function useFriends(userId: string | undefined) {
     } else {
       // Get display names for each friend
       const enhancedFriends = []
-      for (const friend of data || []) {
+      for (const record of data || []) {
+        const friendId = record.user_id === userId ? record.friend_id : record.user_id
+        
         const { data: userData } = await supabase
           .from('guest_sessions')
           .select('display_name')
-          .eq('id', friend.friend_id)
+          .eq('id', friendId)
           .single()
         
         enhancedFriends.push({
-          id: friend.id,
-          friend_id: friend.friend_id,
+          id: record.id,
+          friend_id: friendId,
           display_name: userData?.display_name || 'Unknown',
-          created_at: friend.created_at
+          created_at: record.created_at
         })
       }
       setFriends(enhancedFriends)
@@ -76,35 +78,7 @@ export function useFriends(userId: string | undefined) {
   const loadRequests = async () => {
     if (!userId) return
     
-    // Requests SENT by me
-    const { data: sent, error: sentError } = await supabase
-      .from('friends')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('status', 'pending')
-
-    if (sentError) {
-      console.error('❌ Error loading sent requests:', sentError)
-    } else {
-      const enhancedSent = []
-      for (const req of sent || []) {
-        const { data: userData } = await supabase
-          .from('guest_sessions')
-          .select('display_name')
-          .eq('id', req.friend_id)
-          .single()
-        
-        enhancedSent.push({
-          id: req.id,
-          friend_id: req.friend_id,
-          display_name: userData?.display_name || 'Unknown',
-          created_at: req.created_at
-        })
-      }
-      setSentRequests(enhancedSent)
-    }
-
-    // Requests RECEIVED by me
+    // Only load requests RECEIVED by me (where I am the friend_id)
     const { data: received, error: receivedError } = await supabase
       .from('friends')
       .select('*')
@@ -147,15 +121,6 @@ export function useFriends(userId: string | undefined) {
         filter: `friend_id=eq.${userId}`
       }, () => {
         loadRequests()
-        loadFriends()
-      })
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'friends',
-        filter: `user_id=eq.${userId}`
-      }, () => {
-        loadRequests()
       })
       .on('postgres_changes', {
         event: 'UPDATE',
@@ -163,8 +128,8 @@ export function useFriends(userId: string | undefined) {
         table: 'friends',
         filter: `friend_id=eq.${userId}`
       }, () => {
-        loadRequests()
         loadFriends()
+        loadRequests()
       })
       .on('postgres_changes', {
         event: 'UPDATE',
@@ -172,8 +137,8 @@ export function useFriends(userId: string | undefined) {
         table: 'friends',
         filter: `user_id=eq.${userId}`
       }, () => {
-        loadRequests()
         loadFriends()
+        loadRequests()
       })
       .subscribe()
   }
@@ -182,7 +147,7 @@ export function useFriends(userId: string | undefined) {
     if (!userId) return false
 
     try {
-      // Check if already exists
+      // Check if already exists in either direction
       const { data: existing } = await supabase
         .from('friends')
         .select('*')
@@ -205,7 +170,6 @@ export function useFriends(userId: string | undefined) {
 
       if (error) throw error
 
-      await loadRequests()
       return true
     } catch (err: any) {
       console.error('❌ Error sending friend request:', err)
@@ -215,12 +179,36 @@ export function useFriends(userId: string | undefined) {
 
   const acceptRequest = async (requestId: string) => {
     try {
-      const { error } = await supabase
+      // First get the request details
+      const { data: request, error: fetchError } = await supabase
+        .from('friends')
+        .select('*')
+        .eq('id', requestId)
+        .single()
+
+      if (fetchError || !request) throw new Error('Request not found')
+
+      // Update the original request status
+      const { error: updateError } = await supabase
         .from('friends')
         .update({ status: 'accepted' })
         .eq('id', requestId)
 
-      if (error) throw error
+      if (updateError) throw updateError
+
+      // Create the reverse friendship for bidirectional relationship
+      const { error: reverseError } = await supabase
+        .from('friends')
+        .insert({
+          user_id: request.friend_id,
+          friend_id: request.user_id,
+          status: 'accepted',
+          created_at: new Date().toISOString()
+        })
+
+      if (reverseError && !reverseError.message.includes('duplicate')) {
+        console.error('Error creating reverse friendship:', reverseError)
+      }
 
       await loadFriends()
       await loadRequests()
@@ -252,13 +240,11 @@ export function useFriends(userId: string | undefined) {
     if (!userId) return false
 
     try {
-      const { error } = await supabase
+      // Delete both directions of friendship
+      await supabase
         .from('friends')
         .delete()
-        .eq('user_id', userId)
-        .eq('friend_id', friendId)
-
-      if (error) throw error
+        .or(`and(user_id.eq.${userId},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${userId})`)
 
       await loadFriends()
       return true
@@ -276,7 +262,6 @@ export function useFriends(userId: string | undefined) {
   return {
     friends,
     pendingRequests,
-    sentRequests,
     loading,
     error,
     sendFriendRequest,
