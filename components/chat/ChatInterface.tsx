@@ -33,7 +33,7 @@ export default function ChatInterface({ sessionId }: ChatInterfaceProps) {
 
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Load partner ID directly from session
+  // Load partner ID directly from session (CORRECTED)
   useEffect(() => {
     const loadPartnerId = async () => {
       if (!chat.guestSession?.guest_id) {
@@ -268,12 +268,12 @@ export default function ChatInterface({ sessionId }: ChatInterfaceProps) {
         />
       )}
 
-      {/* Sidebar - Now with partnerId from session */}
+      {/* Sidebar - With CORRECT partnerId */}
       <ChatSidebar
         isOpen={showSidebar}
         onClose={() => setShowSidebar(false)}
         partnerName={chat.partnerName || ''}
-        partnerId={partnerId}
+        partnerId={partnerId}  // This is now the CORRECT partner ID
         chatDuration={chatDuration}
         messageCount={messageCount}
         onReport={() => {
