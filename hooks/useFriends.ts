@@ -52,6 +52,7 @@ export function useFriends(userId: string | undefined) {
 
     if (error) {
       console.error('❌ Error loading friends:', error)
+      setError(error.message)
     } else {
       console.log('✅ Friends loaded:', data?.length || 0)
       setFriends(data?.map(f => ({
@@ -176,6 +177,7 @@ export function useFriends(userId: string | undefined) {
   const sendFriendRequest = async (friendId: string) => {
     if (!userId) {
       console.error('❌ Cannot send request: No userId')
+      alert('Cannot send friend request: You need to be logged in')
       return false
     }
 
@@ -183,11 +185,15 @@ export function useFriends(userId: string | undefined) {
 
     try {
       // Check if they're already friends or request exists
-      const { data: existing } = await supabase
+      const { data: existing, error: checkError } = await supabase
         .from('friends')
         .select('*')
         .or(`and(user_id.eq.${userId},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${userId})`)
         .maybeSingle()
+
+      if (checkError) {
+        console.error('❌ Error checking existing friendship:', checkError)
+      }
 
       if (existing) {
         console.log('⚠️ Friend relationship already exists:', existing)
@@ -208,7 +214,15 @@ export function useFriends(userId: string | undefined) {
 
       if (error) {
         console.error('❌ Error sending friend request:', error)
-        alert(`Failed: ${error.message}`)
+        
+        // Check for specific error types
+        if (error.message.includes('duplicate key')) {
+          alert('Friend request already sent')
+        } else if (error.message.includes('row-level security')) {
+          alert('Security policy error. Please try again.')
+        } else {
+          alert(`Failed to send friend request: ${error.message}`)
+        }
         return false
       }
 
@@ -220,6 +234,7 @@ export function useFriends(userId: string | undefined) {
       return true
     } catch (err: any) {
       console.error('❌ Unexpected error:', err)
+      alert('An unexpected error occurred')
       return false
     }
   }
@@ -234,6 +249,7 @@ export function useFriends(userId: string | undefined) {
 
       if (error) {
         console.error('❌ Error accepting request:', error)
+        alert(`Failed to accept: ${error.message}`)
         return false
       }
 
@@ -256,6 +272,7 @@ export function useFriends(userId: string | undefined) {
 
       if (error) {
         console.error('❌ Error rejecting request:', error)
+        alert(`Failed to reject: ${error.message}`)
         return false
       }
 
@@ -280,6 +297,7 @@ export function useFriends(userId: string | undefined) {
 
       if (error) {
         console.error('❌ Error removing friend:', error)
+        alert(`Failed to remove: ${error.message}`)
         return false
       }
 
@@ -291,7 +309,7 @@ export function useFriends(userId: string | undefined) {
     }
   }
 
-  // Manual refresh function (can be called from components)
+  // Manual refresh function
   const refresh = () => {
     console.log('🔄 Manually refreshing friends data')
     loadFriends()
@@ -308,6 +326,6 @@ export function useFriends(userId: string | undefined) {
     acceptRequest,
     rejectRequest,
     removeFriend,
-    refresh // Expose refresh function
+    refresh
   }
 }
