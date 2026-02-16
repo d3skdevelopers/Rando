@@ -29,6 +29,7 @@ export default function ChatInterface({ sessionId }: ChatInterfaceProps) {
   const [chatDuration, setChatDuration] = useState('0m')
   const [messageCount, setMessageCount] = useState(0)
   const [leftAt, setLeftAt] = useState<string | undefined>()
+  const [showLeftMessage, setShowLeftMessage] = useState(false)
 
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -81,11 +82,16 @@ export default function ChatInterface({ sessionId }: ChatInterfaceProps) {
     }
   }, [chat.messages])
 
-  // Set leftAt when partner leaves
+  // Handle partner leaving - show message and disable input
   useEffect(() => {
     if (chat.partnerLeft && !leftAt) {
       setLeftAt(new Date().toISOString())
-      console.log('👋 Partner left at:', leftAt)
+      setShowLeftMessage(true)
+      
+      // Auto-hide the message after 5 seconds
+      setTimeout(() => {
+        setShowLeftMessage(false)
+      }, 5000)
     }
   }, [chat.partnerLeft, leftAt])
 
@@ -177,6 +183,28 @@ export default function ChatInterface({ sessionId }: ChatInterfaceProps) {
         @keyframes float2 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-40px,30px)} }
       `}</style>
 
+      {/* Partner Left Message - Shows when partner leaves */}
+      {showLeftMessage && (
+        <div style={{
+          position: 'absolute',
+          top: '80px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'rgba(239,68,68,0.9)',
+          color: 'white',
+          padding: '12px 24px',
+          borderRadius: '30px',
+          fontSize: '14px',
+          fontWeight: 500,
+          zIndex: 50,
+          boxShadow: '0 4px 12px rgba(239,68,68,0.3)',
+          backdropFilter: 'blur(4px)',
+          animation: 'slideDown 0.3s ease',
+        }}>
+          👋 {chat.partnerName} has left the chat
+        </div>
+      )}
+
       {/* Header */}
       <ChatHeader
         partnerName={chat.partnerName}
@@ -205,7 +233,6 @@ export default function ChatInterface({ sessionId }: ChatInterfaceProps) {
           currentUserId={chat.guestSession?.guest_id}
           currentUserName={chat.guestSession?.display_name}
           partnerLeft={chat.partnerLeft}
-          partnerName={chat.partnerName}
           onImageClick={(url) => setSelectedImage(url)}
           messagesEndRef={chat.messagesEndRef}
           leftAt={leftAt}
@@ -220,7 +247,7 @@ export default function ChatInterface({ sessionId }: ChatInterfaceProps) {
       </div>
 
       {/* Input Area - Hidden when partner leaves */}
-      {!chat.partnerLeft ? (
+      {!chat.partnerLeft && (
         <ChatInput
           sessionId={sessionId}
           onSendMessage={async (content) => {
@@ -230,31 +257,6 @@ export default function ChatInterface({ sessionId }: ChatInterfaceProps) {
           isSending={chat.isSending}
           onEditImage={(url) => setEditImage(url)}
         />
-      ) : (
-        <div style={{
-          padding: '16px',
-          background: 'rgba(10,10,15,0.95)',
-          borderTop: '1px solid rgba(124,58,237,0.2)',
-          textAlign: 'center',
-        }}>
-          <p style={{ color: '#60607a', marginBottom: '12px' }}>
-            👋 {chat.partnerName} left the chat
-          </p>
-          <button
-            onClick={() => router.push('/matchmaking')}
-            style={{
-              padding: '10px 20px',
-              background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontSize: '14px',
-            }}
-          >
-            Find New Chat
-          </button>
-        </div>
       )}
 
       {/* Safety Warning */}
@@ -297,6 +299,19 @@ export default function ChatInterface({ sessionId }: ChatInterfaceProps) {
           setEditImage(null)
         }}
       />
+
+      <style>{`
+        @keyframes slideDown {
+          from {
+            opacity: 0;
+            transform: translate(-50%, -20px);
+          }
+          to {
+            opacity: 1;
+            transform: translate(-50%, 0);
+          }
+        }
+      `}</style>
     </div>
   )
 }
