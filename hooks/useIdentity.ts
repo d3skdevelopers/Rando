@@ -20,7 +20,7 @@ export function useIdentity() {
           // Verify it's still valid (not expired)
           if (new Date(parsed.expires_at) > new Date()) {
             setIdentity(parsed)
-            console.log('📦 Loaded existing identity:', parsed.display_name)
+            console.log('📦 Loaded existing identity:', parsed.display_name, parsed.guest_id)
             setLoading(false)
             return
           }
@@ -32,9 +32,10 @@ export function useIdentity() {
         
         if (data && data.length > 0) {
           const newIdentity = data[0]
+          // Store in localStorage
           localStorage.setItem('rando-identity', JSON.stringify(newIdentity))
           setIdentity(newIdentity)
-          console.log('🆕 Created new identity:', newIdentity.display_name)
+          console.log('🆕 Created new identity:', newIdentity.display_name, newIdentity.guest_id)
         }
       } catch (err: any) {
         setError(err.message)
@@ -51,7 +52,6 @@ export function useIdentity() {
     if (!identity) return
 
     try {
-      // Update in database
       const { error } = await supabase
         .from('guest_sessions')
         .update({ display_name: newName })
@@ -59,7 +59,6 @@ export function useIdentity() {
 
       if (error) throw error
 
-      // Update local
       const updated = { ...identity, display_name: newName }
       localStorage.setItem('rando-identity', JSON.stringify(updated))
       setIdentity(updated)
