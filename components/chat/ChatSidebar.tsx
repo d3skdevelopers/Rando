@@ -1,12 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { useFriends } from '@/hooks/useFriends'
+import { useIdentity } from '@/hooks/useIdentity'
 
 interface ChatSidebarProps {
   isOpen: boolean
   onClose: () => void
   partnerName: string
+  partnerId?: string
   chatDuration: string
   messageCount: number
   onReport: () => void
@@ -19,24 +22,40 @@ export function ChatSidebar({
   isOpen,
   onClose,
   partnerName,
+  partnerId,
   chatDuration,
   messageCount,
   onReport,
   onBlock,
-  onAddFriend,
+  onAddFriend: onAddFriendProp,
   guestId
 }: ChatSidebarProps) {
   const [activeTab, setActiveTab] = useState<'friends' | 'requests' | 'info'>('info')
+  const { identity } = useIdentity()
   
   const { 
     friends, 
     pendingRequests, 
     sentRequests, 
-    loading,
+    sendFriendRequest,
     acceptRequest, 
     rejectRequest, 
     removeFriend 
-  } = useFriends(guestId)
+  } = useFriends(guestId || identity?.guest_id)
+
+  const handleAddFriend = async () => {
+    if (!partnerId) {
+      alert('Cannot add friend: Partner ID not found')
+      return
+    }
+    
+    const success = await sendFriendRequest(partnerId)
+    if (success) {
+      alert(`Friend request sent to ${partnerName}!`)
+    } else {
+      alert('Failed to send friend request')
+    }
+  }
 
   if (!isOpen) return null
 
@@ -139,21 +158,22 @@ export function ChatSidebar({
             color: activeTab === 'requests' ? '#7c3aed' : '#a0a0b0',
             cursor: 'pointer',
             fontSize: '14px',
-            position: 'relative',
+            position: 'relative' as const,
           }}
         >
           Requests
-          {(pendingRequests.length > 0 || sentRequests.length > 0) && (
+          {pendingRequests.length > 0 && (
             <span style={{
               position: 'absolute',
+              top: '8px',
+              right: '20px',
               background: '#ef4444',
               color: 'white',
               fontSize: '10px',
               padding: '2px 6px',
               borderRadius: '10px',
-              marginLeft: '8px',
             }}>
-              {pendingRequests.length + sentRequests.length}
+              {pendingRequests.length}
             </span>
           )}
         </button>
@@ -227,20 +247,26 @@ export function ChatSidebar({
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <button
-                onClick={onAddFriend}
+                onClick={handleAddFriend}
                 style={actionButtonStyle}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(124,58,237,0.1)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
                 ➕ Add {partnerName} as Friend
               </button>
               <button
                 onClick={onReport}
                 style={actionButtonStyle}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(124,58,237,0.1)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
                 ⚠️ Report User
               </button>
               <button
                 onClick={onBlock}
                 style={{...actionButtonStyle, color: '#ef4444', borderColor: 'rgba(239,68,68,0.2)'}}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239,68,68,0.1)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
                 🚫 Block User
               </button>
@@ -260,9 +286,7 @@ export function ChatSidebar({
               Your Friends
             </h4>
 
-            {loading && <div style={{ textAlign: 'center', color: '#60607a' }}>Loading...</div>}
-
-            {!loading && friends.length === 0 && (
+            {friends.length === 0 ? (
               <div style={{
                 textAlign: 'center',
                 color: '#60607a',
@@ -272,78 +296,31 @@ export function ChatSidebar({
               }}>
                 <div style={{ fontSize: '40px', marginBottom: '12px' }}>👥</div>
                 <p>No friends yet</p>
+                <p style={{ fontSize: '12px', marginTop: '8px' }}>
+                  Add friends during chat to see them here
+                </p>
               </div>
-            )}
-
-            {friends.map(friend => (
-              <div key={friend.id} style={friendItemStyle}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={friendAvatarStyle}>
-                    {friend.friend_name[0]?.toUpperCase()}
-                  </div>
-                  <div>
-                    <div style={{ color: '#f0f0f0', fontWeight: 500 }}>
-                      {friend.friend_name}
+            ) : (
+              friends.map(friend => (
+                <div key={friend.id} style={friendItemStyle}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={friendAvatarStyle}>
+                      {friend.display_name[0]?.toUpperCase()}
+                    </div>
+                    <div>
+                      <div style={{ color: '#f0f0f0', fontWeight: 500 }}>
+                        {friend.display_name}
+                      </div>
                     </div>
                   </div>
+                  <button
+                    onClick={() => removeFriend(friend.friend_id)}
+                    style={removeButtonStyle}
+                  >
+                    ✕
+                  </button>
                 </div>
-                <button
-                  onClick={() => removeFriend(friend.id)}
-                  style={removeButtonStyle}
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* REQUESTS TAB */}
-        {activeTab === 'requests' && (
-          <div>
-            {/* Incoming Requests */}
-            {pendingRequests.length > 0 && (
-              <>
-                <h4 style={{
-                  fontSize: '14px',
-                  color: '#f0f0f0',
-                  marginBottom: '12px',
-                  fontFamily: "'Georgia', serif",
-                }}>
-                  Incoming Requests
-                </h4>
-                {pendingRequests.map(request => (
-                  <div key={request.id} style={requestItemStyle}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                      <div style={friendAvatarStyle}>
-                        {request.friend_name[0]?.toUpperCase()}
-                      </div>
-                      <div>
-                        <div style={{ color: '#f0f0f0', fontWeight: 500 }}>
-                          {request.friend_name}
-                        </div>
-                        <div style={{ fontSize: '11px', color: '#f59e0b' }}>
-                          ⏳ Wants to connect
-                        </div>
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button
-                        onClick={() => acceptRequest(request.id)}
-                        style={acceptButtonStyle}
-                      >
-                        Accept
-                      </button>
-                      <button
-                        onClick={() => rejectRequest(request.id)}
-                        style={rejectButtonStyle}
-                      >
-                        Reject
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </>
+              ))
             )}
 
             {/* Sent Requests */}
@@ -351,36 +328,42 @@ export function ChatSidebar({
               <>
                 <h4 style={{
                   fontSize: '14px',
-                  color: '#f0f0f0',
-                  margin: pendingRequests.length > 0 ? '24px 0 12px' : '0 0 12px',
-                  fontFamily: "'Georgia', serif",
+                  color: '#7c3aed',
+                  margin: '16px 0 8px',
                 }}>
                   Sent Requests
                 </h4>
-                {sentRequests.map(request => (
-                  <div key={request.id} style={{
-                    ...requestItemStyle,
-                    background: 'rgba(255,255,255,0.03)',
-                  }}>
+                {sentRequests.map(req => (
+                  <div key={req.id} style={{...friendItemStyle, opacity: 0.7}}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <div style={friendAvatarStyle}>
-                        {request.friend_name[0]?.toUpperCase()}
+                        {req.display_name[0]?.toUpperCase()}
                       </div>
                       <div>
-                        <div style={{ color: '#f0f0f0', fontWeight: 500 }}>
-                          {request.friend_name}
-                        </div>
-                        <div style={{ fontSize: '11px', color: '#9ca3af' }}>
-                          ⏳ Pending
-                        </div>
+                        <div style={{ color: '#f0f0f0' }}>{req.display_name}</div>
+                        <div style={{ fontSize: '10px', color: '#f59e0b' }}>⏳ Pending</div>
                       </div>
                     </div>
                   </div>
                 ))}
               </>
             )}
+          </div>
+        )}
 
-            {pendingRequests.length === 0 && sentRequests.length === 0 && (
+        {/* REQUESTS TAB */}
+        {activeTab === 'requests' && (
+          <div>
+            <h4 style={{
+              fontSize: '16px',
+              color: '#f0f0f0',
+              marginBottom: '16px',
+              fontFamily: "'Georgia', serif",
+            }}>
+              Friend Requests
+            </h4>
+
+            {pendingRequests.length === 0 ? (
               <div style={{
                 textAlign: 'center',
                 color: '#60607a',
@@ -391,9 +374,72 @@ export function ChatSidebar({
                 <div style={{ fontSize: '40px', marginBottom: '12px' }}>📭</div>
                 <p>No pending requests</p>
               </div>
+            ) : (
+              pendingRequests.map(request => (
+                <div key={request.id} style={requestItemStyle}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                    <div style={friendAvatarStyle}>
+                      {request.display_name[0]?.toUpperCase()}
+                    </div>
+                    <div>
+                      <div style={{ color: '#f0f0f0', fontWeight: 500 }}>
+                        {request.display_name}
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#f59e0b' }}>
+                        ⏳ Wants to connect
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => acceptRequest(request.id)}
+                      style={acceptButtonStyle}
+                    >
+                      Accept
+                    </button>
+                    <button
+                      onClick={() => rejectRequest(request.id)}
+                      style={rejectButtonStyle}
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              ))
             )}
           </div>
         )}
+      </div>
+
+      {/* Settings Button - Bottom Right */}
+      <div style={{
+        padding: '16px',
+        borderTop: '1px solid rgba(124,58,237,0.2)',
+      }}>
+        <Link href="/settings/profile" style={{ textDecoration: 'none' }}>
+          <button
+            style={{
+              width: '100%',
+              padding: '12px',
+              background: 'rgba(124,58,237,0.1)',
+              border: '1px solid rgba(124,58,237,0.2)',
+              borderRadius: '8px',
+              color: '#f0f0f0',
+              fontSize: '14px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(124,58,237,0.2)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(124,58,237,0.1)'}
+          >
+            <span style={{ fontSize: '18px' }}>⚙️</span>
+            Settings
+          </button>
+        </Link>
       </div>
 
       <style>{`
