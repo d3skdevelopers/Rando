@@ -10,6 +10,7 @@ import { ChatSidebar } from './ChatSidebar'
 import { ChatModals } from './ChatModals'
 import { TypingIndicator } from './TypingIndicator'
 import { SafetyWarning } from './SafetyWarning'
+import { supabase } from '@/lib/supabase/client'
 
 interface ChatInterfaceProps {
   sessionId: string
@@ -18,6 +19,7 @@ interface ChatInterfaceProps {
 export default function ChatInterface({ sessionId }: ChatInterfaceProps) {
   const router = useRouter()
   const chat = useChat(sessionId)
+  const [partnerId, setPartnerId] = useState<string | undefined>()
 
   const [showSidebar, setShowSidebar] = useState(false)
   const [showReport, setShowReport] = useState(false)
@@ -30,8 +32,28 @@ export default function ChatInterface({ sessionId }: ChatInterfaceProps) {
 
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Find partner ID from messages (for friend requests)
-  const partnerId = chat.messages.find(m => m.sender_id !== chat.guestSession?.guest_id)?.sender_id
+  // Load partner ID directly from session
+  useEffect(() => {
+    const loadPartnerId = async () => {
+      if (!chat.guestSession?.guest_id) return
+
+      const { data: session } = await supabase
+        .from('chat_sessions')
+        .select('user1_id, user2_id')
+        .eq('id', sessionId)
+        .single()
+
+      if (session) {
+        if (session.user1_id === chat.guestSession.guest_id) {
+          setPartnerId(session.user2_id)
+        } else {
+          setPartnerId(session.user1_id)
+        }
+      }
+    }
+
+    loadPartnerId()
+  }, [sessionId, chat.guestSession])
 
   // Update stats
   useEffect(() => {
@@ -200,7 +222,7 @@ export default function ChatInterface({ sessionId }: ChatInterfaceProps) {
         />
       )}
 
-      {/* Sidebar - Now with partnerId for friend requests */}
+      {/* Sidebar - Now with partnerId from session */}
       <ChatSidebar
         isOpen={showSidebar}
         onClose={() => setShowSidebar(false)}
