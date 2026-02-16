@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { useIdentity } from '@/hooks/useIdentity'
 import { RealtimeChannel } from '@supabase/supabase-js'
@@ -68,7 +68,7 @@ export default function FriendsDebugPage() {
         addLog(`   Request ID: ${payload.new.id.slice(0,8)}`)
         addLog(`   From user: ${payload.new.user_id.slice(0,8)}`)
         setLastUpdate(new Date())
-        checkDatabase() // Immediate refresh
+        checkDatabase()
       })
       .on('postgres_changes', {
         event: 'INSERT',
