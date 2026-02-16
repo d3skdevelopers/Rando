@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { useFriends } from '@/hooks/useFriends'
 import { useIdentity } from '@/hooks/useIdentity'
@@ -11,7 +12,7 @@ interface ChatSidebarProps {
   onClose: () => void
   partnerName: string
   partnerId?: string
-  chatDuration: string
+  chatDuration?: string  // Made optional since it's not always accurate
   messageCount: number
   onReport: () => void
   onBlock: () => void
@@ -31,8 +32,10 @@ export function ChatSidebar({
   onAddFriend: onAddFriendProp,
   guestId
 }: ChatSidebarProps) {
-  const [activeTab, setActiveTab] = useState<'friends' | 'requests' | 'info'>('info')
-  const [debugLogs, setDebugLogs] = useState<string[]>([])
+  const router = useRouter()
+  const [activeTab, setActiveTab] = useState<'friends' | 'requests' | 'history' | 'info'>('info')
+  const [recentChats, setRecentChats] = useState<any[]>([])
+  const [loadingHistory, setLoadingHistory] = useState(false)
   const { identity } = useIdentity()
   
   const currentUserId = guestId || identity?.guest_id
@@ -40,7 +43,6 @@ export function ChatSidebar({
   const { 
     friends, 
     pendingRequests, 
-    sentRequests, 
     sendFriendRequest,
     acceptRequest, 
     rejectRequest, 
@@ -48,19 +50,75 @@ export function ChatSidebar({
     refresh
   } = useFriends(currentUserId)
 
+  // Load recent chat history
+  useEffect(() => {
+    if (isOpen && currentUserId) {
+      loadRecentChats()
+    }
+  }, [isOpen, currentUserId])
+
+  const loadRecentChats = async () => {
+    if (!currentUserId) return
+    
+    setLoadingHistory(true)
+    
+    const { data, error } = await supabase
+      .from('chat_sessions')
+      .select('*')
+      .or(`user1_id.eq.${currentUserId},user2_id.eq.${currentUserId}`)
+      .order('created_at', { ascending: false })
+      .limit(5)
+
+    if (error) {
+      console.error('Error loading chat history:', error)
+    } else {
+      // Enhance with partner names
+      const enhanced = await Promise.all(data.map(async (session) => {
+        const isUser1 = session.user1_id === currentUserId
+        const partnerId = isUser1 ? session.user2_id : session.user1_id
+        const partnerDisplayName = isUser1 ? session.user2_display_name : session.user1_display_name
+        
+        // Get message count for this session
+        const { count } = await supabase
+          .from('messages')
+          .select('*', { count: 'exact', head: true })
+          .eq('session_id', session.id)
+        
+        return {
+          id: session.id,
+          partner_id: partnerId,
+          partner_name: partnerDisplayName,
+          created_at: session.created_at,
+          message_count: count || 0,
+          date: new Date(session.created_at).toLocaleDateString(),
+          time: new Date(session.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }
+      }))
+      setRecentChats(enhanced)
+    }
+    
+    setLoadingHistory(false)
+  }
+
+  const handleChatWithFriend = async (friendId: string, friendName: string) => {
+    // In a real implementation, you'd create a new chat session
+    // For now, we'll just show an alert
+    alert(`Starting chat with ${friendName}...`)
+    // You would implement actual chat initiation here
+    // router.push(`/chat/new?friend=${friendId}`)
+  }
+
+  const handleViewPastChat = (sessionId: string) => {
+    router.push(`/history/${sessionId}`)
+  }
+
   // Force refresh when sidebar opens
   useEffect(() => {
     if (isOpen) {
       refresh()
+      loadRecentChats()
     }
   }, [isOpen])
-
-  const addDebugLog = (message: string) => {
-    const timestamp = new Date().toLocaleTimeString()
-    const log = `[${timestamp}] ${message}`
-    console.log(log)
-    setDebugLogs(prev => [log, ...prev].slice(0, 20))
-  }
 
   const handleAddFriend = async () => {
     if (!partnerId) {
@@ -71,7 +129,6 @@ export function ChatSidebar({
     const success = await sendFriendRequest(partnerId)
     if (success) {
       alert(`Friend request sent to ${partnerName}!`)
-      setActiveTab('requests')
       refresh()
     }
   }
@@ -149,18 +206,22 @@ export function ChatSidebar({
         display: 'flex',
         borderBottom: '1px solid rgba(124,58,237,0.2)',
         padding: '0 16px',
+        overflowX: 'auto',
+        scrollbarWidth: 'none',
       }}>
         <button
           onClick={() => setActiveTab('info')}
           style={{
-            flex: 1,
+            flex: '0 0 auto',
             padding: '12px 8px',
+            margin: '0 4px',
             background: 'transparent',
             border: 'none',
             borderBottom: activeTab === 'info' ? '2px solid #7c3aed' : '2px solid transparent',
             color: activeTab === 'info' ? '#7c3aed' : '#a0a0b0',
             cursor: 'pointer',
             fontSize: '14px',
+            whiteSpace: 'nowrap',
           }}
         >
           Chat Info
@@ -168,14 +229,16 @@ export function ChatSidebar({
         <button
           onClick={() => setActiveTab('friends')}
           style={{
-            flex: 1,
+            flex: '0 0 auto',
             padding: '12px 8px',
+            margin: '0 4px',
             background: 'transparent',
             border: 'none',
             borderBottom: activeTab === 'friends' ? '2px solid #7c3aed' : '2px solid transparent',
             color: activeTab === 'friends' ? '#7c3aed' : '#a0a0b0',
             cursor: 'pointer',
             fontSize: '14px',
+            whiteSpace: 'nowrap',
           }}
         >
           Friends {friends.length > 0 && `(${friends.length})`}
@@ -183,32 +246,53 @@ export function ChatSidebar({
         <button
           onClick={() => setActiveTab('requests')}
           style={{
-            flex: 1,
+            flex: '0 0 auto',
             padding: '12px 8px',
+            margin: '0 4px',
             background: 'transparent',
             border: 'none',
             borderBottom: activeTab === 'requests' ? '2px solid #7c3aed' : '2px solid transparent',
             color: activeTab === 'requests' ? '#7c3aed' : '#a0a0b0',
             cursor: 'pointer',
             fontSize: '14px',
+            whiteSpace: 'nowrap',
             position: 'relative' as const,
           }}
         >
           Requests
-          {(pendingRequests.length > 0 || sentRequests.length > 0) && (
+          {pendingRequests.length > 0 && (
             <span style={{
               position: 'absolute',
-              top: '8px',
-              right: '20px',
-              background: pendingRequests.length > 0 ? '#ef4444' : '#f59e0b',
+              top: '4px',
+              right: '-4px',
+              background: '#ef4444',
               color: 'white',
               fontSize: '10px',
               padding: '2px 6px',
               borderRadius: '10px',
+              minWidth: '18px',
+              textAlign: 'center',
             }}>
-              {pendingRequests.length + sentRequests.length}
+              {pendingRequests.length}
             </span>
           )}
+        </button>
+        <button
+          onClick={() => setActiveTab('history')}
+          style={{
+            flex: '0 0 auto',
+            padding: '12px 8px',
+            margin: '0 4px',
+            background: 'transparent',
+            border: 'none',
+            borderBottom: activeTab === 'history' ? '2px solid #7c3aed' : '2px solid transparent',
+            color: activeTab === 'history' ? '#7c3aed' : '#a0a0b0',
+            cursor: 'pointer',
+            fontSize: '14px',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          History
         </button>
       </div>
 
@@ -250,32 +334,6 @@ export function ChatSidebar({
               }}>
                 {partnerName}
               </h4>
-
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '12px',
-                marginTop: '16px',
-              }}>
-                <div style={{
-                  background: 'rgba(255,255,255,0.03)',
-                  borderRadius: '8px',
-                  padding: '12px',
-                }}>
-                  <div style={{ fontSize: '20px', color: '#7c3aed', marginBottom: '4px' }}>⏱️</div>
-                  <div style={{ fontSize: '11px', color: '#60607a' }}>Duration</div>
-                  <div style={{ fontSize: '14px', color: '#f0f0f0' }}>{chatDuration}</div>
-                </div>
-                <div style={{
-                  background: 'rgba(255,255,255,0.03)',
-                  borderRadius: '8px',
-                  padding: '12px',
-                }}>
-                  <div style={{ fontSize: '20px', color: '#7c3aed', marginBottom: '4px' }}>💬</div>
-                  <div style={{ fontSize: '11px', color: '#60607a' }}>Messages</div>
-                  <div style={{ fontSize: '14px', color: '#f0f0f0' }}>{messageCount}</div>
-                </div>
-              </div>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -328,17 +386,26 @@ export function ChatSidebar({
               }}>
                 <div style={{ fontSize: '40px', marginBottom: '12px' }}>👥</div>
                 <p>No friends yet</p>
+                <p style={{ fontSize: '12px', marginTop: '8px' }}>
+                  Add friends during chat to see them here
+                </p>
               </div>
             ) : (
               friends.map(friend => (
                 <div key={friend.id} style={friendItemStyle}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div 
+                    style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}
+                    onClick={() => handleChatWithFriend(friend.friend_id, friend.display_name)}
+                  >
                     <div style={friendAvatarStyle}>
                       {friend.display_name[0]?.toUpperCase()}
                     </div>
-                    <div>
+                    <div style={{ flex: 1 }}>
                       <div style={{ color: '#f0f0f0', fontWeight: 500 }}>
                         {friend.display_name}
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#22c55e' }}>
+                        ● Online
                       </div>
                     </div>
                   </div>
@@ -383,78 +450,7 @@ export function ChatSidebar({
               Friend Requests
             </h4>
 
-            {/* Received Requests */}
-            {pendingRequests.length > 0 && (
-              <>
-                <h5 style={{
-                  fontSize: '13px',
-                  color: '#7c3aed',
-                  marginBottom: '8px',
-                }}>
-                  Received ({pendingRequests.length})
-                </h5>
-                {pendingRequests.map(request => (
-                  <div key={request.id} style={requestItemStyle}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                      <div style={friendAvatarStyle}>
-                        {request.display_name[0]?.toUpperCase()}
-                      </div>
-                      <div>
-                        <div style={{ color: '#f0f0f0', fontWeight: 500 }}>
-                          {request.display_name}
-                        </div>
-                        <div style={{ fontSize: '11px', color: '#f59e0b' }}>
-                          ⏳ Wants to connect
-                        </div>
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button
-                        onClick={() => handleAccept(request.id)}
-                        style={acceptButtonStyle}
-                      >
-                        Accept
-                      </button>
-                      <button
-                        onClick={() => handleReject(request.id)}
-                        style={rejectButtonStyle}
-                      >
-                        Reject
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </>
-            )}
-
-            {/* Sent Requests */}
-            {sentRequests.length > 0 && (
-              <>
-                <h5 style={{
-                  fontSize: '13px',
-                  color: '#f59e0b',
-                  marginBottom: '8px',
-                  marginTop: pendingRequests.length > 0 ? '20px' : 0,
-                }}>
-                  Sent ({sentRequests.length})
-                </h5>
-                {sentRequests.map(req => (
-                  <div key={req.id} style={{...friendItemStyle, opacity: 0.7}}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={friendAvatarStyle}>
-                        {req.display_name[0]?.toUpperCase()}
-                      </div>
-                      <div>
-                        <div style={{ color: '#f0f0f0' }}>{req.display_name}</div>
-                        <div style={{ fontSize: '10px', color: '#f59e0b' }}>⏳ Pending</div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </>
-            )}
-
-            {pendingRequests.length === 0 && sentRequests.length === 0 && (
+            {pendingRequests.length === 0 ? (
               <div style={{
                 textAlign: 'center',
                 color: '#60607a',
@@ -465,6 +461,121 @@ export function ChatSidebar({
                 <div style={{ fontSize: '40px', marginBottom: '12px' }}>📭</div>
                 <p>No pending requests</p>
               </div>
+            ) : (
+              pendingRequests.map(request => (
+                <div key={request.id} style={requestItemStyle}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                    <div style={friendAvatarStyle}>
+                      {request.display_name[0]?.toUpperCase()}
+                    </div>
+                    <div>
+                      <div style={{ color: '#f0f0f0', fontWeight: 500 }}>
+                        {request.display_name}
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#f59e0b' }}>
+                        ⏳ Wants to connect
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => handleAccept(request.id)}
+                      style={acceptButtonStyle}
+                    >
+                      Accept
+                    </button>
+                    <button
+                      onClick={() => handleReject(request.id)}
+                      style={rejectButtonStyle}
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* HISTORY TAB */}
+        {activeTab === 'history' && (
+          <div>
+            <h4 style={{
+              fontSize: '16px',
+              color: '#f0f0f0',
+              marginBottom: '16px',
+              fontFamily: "'Georgia', serif",
+            }}>
+              Recent Chats
+            </h4>
+
+            {loadingHistory ? (
+              <div style={{ textAlign: 'center', color: '#60607a', padding: '20px' }}>
+                Loading...
+              </div>
+            ) : recentChats.length === 0 ? (
+              <div style={{
+                textAlign: 'center',
+                color: '#60607a',
+                padding: '40px 20px',
+                background: 'rgba(255,255,255,0.02)',
+                borderRadius: '12px',
+              }}>
+                <div style={{ fontSize: '40px', marginBottom: '12px' }}>🕒</div>
+                <p>No chat history yet</p>
+                <p style={{ fontSize: '12px', marginTop: '8px' }}>
+                  Your last 5 chats will appear here
+                </p>
+              </div>
+            ) : (
+              recentChats.map(chat => (
+                <div 
+                  key={chat.id} 
+                  style={historyItemStyle}
+                  onClick={() => handleViewPastChat(chat.id)}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={historyAvatarStyle}>
+                      {chat.partner_name[0]?.toUpperCase()}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: '#f0f0f0', fontWeight: 500 }}>
+                          {chat.partner_name}
+                        </span>
+                        <span style={{ fontSize: '10px', color: '#60607a' }}>
+                          {chat.time}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#60607a' }}>
+                        {chat.message_count} messages
+                      </div>
+                      <div style={{ fontSize: '10px', color: '#40405a', marginTop: '2px' }}>
+                        {chat.date}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+
+            {recentChats.length > 0 && (
+              <button
+                onClick={() => router.push('/history')}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  marginTop: '16px',
+                  background: 'transparent',
+                  border: '1px solid rgba(124,58,237,0.2)',
+                  borderRadius: '8px',
+                  color: '#7c3aed',
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                }}
+              >
+                View All History →
+              </button>
             )}
           </div>
         )}
@@ -482,6 +593,13 @@ export function ChatSidebar({
           </button>
         </Link>
       </div>
+
+      <style>{`
+        @keyframes slideIn {
+          from { transform: translateX(100%); }
+          to { transform: translateX(0); }
+        }
+      `}</style>
     </div>
   )
 }
@@ -507,6 +625,7 @@ const friendItemStyle = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
+  transition: 'all 0.2s ease',
 }
 
 const friendAvatarStyle = {
@@ -518,6 +637,7 @@ const friendAvatarStyle = {
   alignItems: 'center',
   justifyContent: 'center',
   color: 'white',
+  fontSize: '16px',
 }
 
 const removeButtonStyle = {
@@ -526,7 +646,8 @@ const removeButtonStyle = {
   color: '#ef4444',
   fontSize: '18px',
   cursor: 'pointer',
-  padding: '4px 8px',
+  padding: '8px',
+  borderRadius: '4px',
 }
 
 const requestItemStyle = {
@@ -558,6 +679,27 @@ const rejectButtonStyle = {
   fontSize: '13px',
 }
 
+const historyItemStyle = {
+  background: 'rgba(255,255,255,0.03)',
+  borderRadius: '10px',
+  padding: '12px',
+  marginBottom: '8px',
+  cursor: 'pointer',
+  transition: 'all 0.2s ease',
+}
+
+const historyAvatarStyle = {
+  width: '36px',
+  height: '36px',
+  borderRadius: '50%',
+  background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: 'white',
+  fontSize: '14px',
+}
+
 const settingsButtonStyle = {
   width: '100%',
   padding: '12px',
@@ -571,5 +713,5 @@ const settingsButtonStyle = {
   alignItems: 'center',
   justifyContent: 'center',
   gap: '8px',
-  transition: 'all 0.2s',
+  transition: 'all 0.2s ease',
 }
