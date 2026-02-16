@@ -32,23 +32,36 @@ export default function ChatInterface({ sessionId }: ChatInterfaceProps) {
 
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Load partner ID directly from session
+  // Load partner ID directly from session (FIXED)
   useEffect(() => {
     const loadPartnerId = async () => {
-      if (!chat.guestSession?.guest_id) return
+      if (!chat.guestSession?.guest_id) {
+        console.log('⏳ Waiting for guest session...')
+        return
+      }
 
-      const { data: session } = await supabase
+      console.log('🔍 Loading partner ID for session:', sessionId)
+      console.log('👤 Current guest ID:', chat.guestSession.guest_id)
+
+      const { data: session, error } = await supabase
         .from('chat_sessions')
         .select('user1_id, user2_id')
         .eq('id', sessionId)
         .single()
 
-      if (session) {
-        if (session.user1_id === chat.guestSession.guest_id) {
-          setPartnerId(session.user2_id)
-        } else {
-          setPartnerId(session.user1_id)
-        }
+      if (error) {
+        console.error('❌ Error loading session:', error)
+        return
+      }
+
+      console.log('📊 Session data:', session)
+
+      if (session.user1_id === chat.guestSession.guest_id) {
+        setPartnerId(session.user2_id)
+        console.log('✅ Partner ID set (user2):', session.user2_id)
+      } else {
+        setPartnerId(session.user1_id)
+        console.log('✅ Partner ID set (user1):', session.user1_id)
       }
     }
 
@@ -168,7 +181,10 @@ export default function ChatInterface({ sessionId }: ChatInterfaceProps) {
         isOnline={true}
         isTyping={chat.isTyping}
         partnerLeft={chat.partnerLeft}
-        onOpenSidebar={() => setShowSidebar(true)}
+        onOpenSidebar={() => {
+          console.log('📊 Opening sidebar, partnerId:', partnerId)
+          setShowSidebar(true)
+        }}
         onReport={() => setShowReport(true)}
         onEndChat={handleEndChat}
       />
