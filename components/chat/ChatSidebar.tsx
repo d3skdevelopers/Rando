@@ -12,7 +12,7 @@ interface ChatSidebarProps {
   onClose: () => void
   partnerName: string
   partnerId?: string
-  chatDuration?: string  // Made optional since it's not always accurate
+  chatDuration?: string
   messageCount: number
   onReport: () => void
   onBlock: () => void
@@ -100,12 +100,8 @@ export function ChatSidebar({
     setLoadingHistory(false)
   }
 
-  const handleChatWithFriend = async (friendId: string, friendName: string) => {
-    // In a real implementation, you'd create a new chat session
-    // For now, we'll just show an alert
-    alert(`Starting chat with ${friendName}...`)
-    // You would implement actual chat initiation here
-    // router.push(`/chat/new?friend=${friendId}`)
+  const handleChatWithFriend = (friendId: string, friendName: string) => {
+    router.push(`/chat/new?friend=${friendId}&name=${encodeURIComponent(friendName)}`)
   }
 
   const handleViewPastChat = (sessionId: string) => {
@@ -394,7 +390,7 @@ export function ChatSidebar({
               friends.map(friend => (
                 <div key={friend.id} style={friendItemStyle}>
                   <div 
-                    style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}
+                    style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, cursor: 'pointer' }}
                     onClick={() => handleChatWithFriend(friend.friend_id, friend.display_name)}
                   >
                     <div style={friendAvatarStyle}>
@@ -405,7 +401,7 @@ export function ChatSidebar({
                         {friend.display_name}
                       </div>
                       <div style={{ fontSize: '11px', color: '#22c55e' }}>
-                        ● Online
+                        ● Click to chat
                       </div>
                     </div>
                   </div>
