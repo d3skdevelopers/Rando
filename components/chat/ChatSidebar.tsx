@@ -32,6 +32,7 @@ export function ChatSidebar({
   guestId
 }: ChatSidebarProps) {
   const [activeTab, setActiveTab] = useState<'friends' | 'requests' | 'info'>('info')
+  const [debugLogs, setDebugLogs] = useState<string[]>([])
   const { identity } = useIdentity()
   
   const { 
@@ -45,19 +46,28 @@ export function ChatSidebar({
     refresh
   } = useFriends(guestId || identity?.guest_id)
 
+  const addDebugLog = (message: string) => {
+    const timestamp = new Date().toLocaleTimeString()
+    const log = `[${timestamp}] ${message}`
+    console.log(log)
+    setDebugLogs(prev => [log, ...prev].slice(0, 10)) // Keep last 10 logs
+  }
+
   const handleAddFriend = async () => {
     if (!partnerId) {
+      addDebugLog('❌ Add friend failed - no partnerId')
       alert('Cannot add friend: Partner ID not found. Please wait a moment and try again.')
-      console.log('❌ Add friend failed - no partnerId', { partnerId, guestId, identity })
       return
     }
     
-    console.log('📨 Sending friend request to:', partnerId)
+    addDebugLog(`📨 Sending friend request to: ${partnerId}`)
     const success = await sendFriendRequest(partnerId)
     if (success) {
+      addDebugLog(`✅ Friend request sent to ${partnerName}`)
       alert(`✅ Friend request sent to ${partnerName}!`)
       setActiveTab('requests')
     } else {
+      addDebugLog('❌ Failed to send friend request')
       alert('❌ Failed to send friend request')
     }
   }
@@ -65,13 +75,8 @@ export function ChatSidebar({
   // Debug function to check database directly
   const debugCheckDatabase = async () => {
     const currentId = guestId || identity?.guest_id
-    console.log('🔍 DEBUG - Current state:', {
-      userId: currentId,
-      pendingCount: pendingRequests.length,
-      sentCount: sentRequests.length,
-      pendingRequests,
-      sentRequests
-    })
+    addDebugLog(`🔍 DEBUG - Current userId: ${currentId}`)
+    addDebugLog(`📊 State - Pending: ${pendingRequests.length}, Sent: ${sentRequests.length}`)
     
     // Direct database check
     const { data: directCheck } = await supabase
@@ -84,8 +89,13 @@ export function ChatSidebar({
       .or(`user_id.eq.${currentId},friend_id.eq.${currentId}`)
       .order('created_at', { ascending: false })
     
-    console.log('📊 DIRECT DATABASE CHECK:', directCheck)
-    alert(`Check console (F12) for debug info\nPending: ${pendingRequests.length}\nSent: ${sentRequests.length}\nTotal in DB: ${directCheck?.length || 0}`)
+    addDebugLog(`📊 DATABASE FOUND: ${directCheck?.length || 0} records`)
+    directCheck?.forEach((record, i) => {
+      addDebugLog(`  ${i+1}. ${record.user_id === currentId ? 'SENT' : 'RECEIVED'} to/from ${record.friend?.[0]?.display_name || record.requester?.[0]?.display_name} (${record.status})`)
+    })
+    
+    console.log('📊 FULL DATABASE CHECK:', directCheck)
+    alert(`Check top of sidebar for debug logs\nFound ${directCheck?.length || 0} records in database`)
   }
 
   if (!isOpen) return null
@@ -105,6 +115,35 @@ export function ChatSidebar({
       animation: 'slideIn 0.3s ease',
       boxShadow: '-5px 0 30px rgba(0,0,0,0.5)',
     }}>
+      {/* DEBUG LOGS - AT THE VERY TOP */}
+      {debugLogs.length > 0 && (
+        <div style={{
+          background: '#1a1a2e',
+          borderBottom: '2px solid #7c3aed',
+          padding: '8px 12px',
+          maxHeight: '150px',
+          overflowY: 'auto',
+          fontFamily: 'monospace',
+          fontSize: '11px',
+          color: '#0f0',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+            <strong style={{ color: '#7c3aed' }}>🐞 DEBUG LOGS</strong>
+            <button 
+              onClick={() => setDebugLogs([])}
+              style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '11px' }}
+            >
+              Clear
+            </button>
+          </div>
+          {debugLogs.map((log, i) => (
+            <div key={i} style={{ marginBottom: '2px', borderBottom: '1px solid #333', paddingBottom: '2px' }}>
+              {log}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Header */}
       <div style={{
         padding: '20px',
