@@ -13,10 +13,8 @@ export function useFriends(userId: string | undefined) {
   
   const channelRef = useRef<RealtimeChannel | null>(null)
 
-  // Load all friend data
   useEffect(() => {
     if (!userId) return
-
     loadFriends()
     loadRequests()
     setupRealtime()
@@ -31,8 +29,7 @@ export function useFriends(userId: string | undefined) {
   const loadFriends = async () => {
     setLoading(true)
     
-    // Get accepted friends
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('friends')
       .select(`
         id,
@@ -40,33 +37,26 @@ export function useFriends(userId: string | undefined) {
         status,
         created_at,
         friend:guest_sessions!friend_id(
-          display_name,
-          last_seen_at
+          display_name
         )
       `)
       .eq('user_id', userId)
       .eq('status', 'accepted')
       .order('created_at', { ascending: false })
 
-    if (error) {
-      setError(error.message)
-    } else {
-      const formatted = data.map(f => ({
+    if (data) {
+      setFriends(data.map(f => ({
         id: f.id,
         friend_id: f.friend_id,
         display_name: f.friend?.[0]?.display_name || 'Unknown',
-        status: f.status,
-        created_at: f.created_at,
-        is_online: false
-      }))
-      setFriends(formatted)
+        created_at: f.created_at
+      })))
     }
-    
     setLoading(false)
   }
 
   const loadRequests = async () => {
-    // Get pending requests SENT by me
+    // Requests SENT by me
     const { data: sent } = await supabase
       .from('friends')
       .select(`
@@ -87,7 +77,7 @@ export function useFriends(userId: string | undefined) {
       })))
     }
 
-    // Get pending requests RECEIVED by me
+    // Requests RECEIVED by me
     const { data: received } = await supabase
       .from('friends')
       .select(`
@@ -112,25 +102,18 @@ export function useFriends(userId: string | undefined) {
   const setupRealtime = () => {
     if (channelRef.current || !userId) return
 
-    const channel = supabase.channel(`friends-${userId}`, {
-      config: { broadcast: { self: true } }
-    })
-
+    const channel = supabase.channel(`friends-${userId}`)
     channelRef.current = channel
 
-    // Listen for new friend requests
     channel
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
         table: 'friends',
         filter: `friend_id=eq.${userId}`
-      }, (payload) => {
+      }, () => {
         loadRequests()
       })
-
-    // Listen for request acceptance
-    channel
       .on('postgres_changes', {
         event: 'UPDATE',
         schema: 'public',
@@ -142,8 +125,7 @@ export function useFriends(userId: string | undefined) {
           loadRequests()
         }
       })
-
-    channel.subscribe()
+      .subscribe()
   }
 
   // Send friend request
@@ -161,7 +143,6 @@ export function useFriends(userId: string | undefined) {
         })
 
       if (error) throw error
-      
       await loadRequests()
       return true
     } catch (err: any) {
@@ -170,60 +151,48 @@ export function useFriends(userId: string | undefined) {
     }
   }
 
-  // Accept friend request
   const acceptRequest = async (requestId: string) => {
     try {
-      const { error } = await supabase
+      await supabase
         .from('friends')
         .update({ status: 'accepted' })
         .eq('id', requestId)
-
-      if (error) throw error
 
       await loadFriends()
       await loadRequests()
       return true
     } catch (err: any) {
-      setError(err.message)
       return false
     }
   }
 
-  // Reject/decline friend request
   const rejectRequest = async (requestId: string) => {
     try {
-      const { error } = await supabase
+      await supabase
         .from('friends')
         .delete()
         .eq('id', requestId)
 
-      if (error) throw error
-
       await loadRequests()
       return true
     } catch (err: any) {
-      setError(err.message)
       return false
     }
   }
 
-  // Remove friend
   const removeFriend = async (friendId: string) => {
     if (!userId) return false
 
     try {
-      const { error } = await supabase
+      await supabase
         .from('friends')
         .delete()
         .eq('user_id', userId)
         .eq('friend_id', friendId)
 
-      if (error) throw error
-
       await loadFriends()
       return true
     } catch (err: any) {
-      setError(err.message)
       return false
     }
   }
