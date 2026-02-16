@@ -40,7 +40,8 @@ export function ChatSidebar({
     sendFriendRequest,
     acceptRequest, 
     rejectRequest, 
-    removeFriend 
+    removeFriend,
+    refresh  // Added refresh function
   } = useFriends(guestId || identity?.guest_id)
 
   const handleAddFriend = async () => {
@@ -347,6 +348,30 @@ export function ChatSidebar({
         {/* REQUESTS TAB */}
         {activeTab === 'requests' && (
           <div>
+            {/* Manual refresh button */}
+            <button
+              onClick={refresh}
+              style={{
+                width: '100%',
+                padding: '8px',
+                marginBottom: '16px',
+                background: 'rgba(124,58,237,0.1)',
+                border: '1px solid rgba(124,58,237,0.2)',
+                borderRadius: '6px',
+                color: '#a0a0b0',
+                fontSize: '12px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(124,58,237,0.2)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(124,58,237,0.1)'}
+            >
+              <span>🔄</span> Refresh Requests
+            </button>
+
             <h4 style={{
               fontSize: '16px',
               color: '#f0f0f0',
