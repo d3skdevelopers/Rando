@@ -1,672 +1,447 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase/client'
+import { useIdentity } from '@/hooks/useIdentity'
 
-export default function SimpleDebugPage() {
+export default function FriendsDebugPage() {
+  const { identity } = useIdentity()
   const [logs, setLogs] = useState<string[]>([])
-  const [session, setSession] = useState<any>(null)
-  const [inQueue, setInQueue] = useState(false)
-  const [inChat, setInChat] = useState(false)
-  const [currentSession, setCurrentSession] = useState<any>(null)
-  const [messages, setMessages] = useState<any[]>([])
-  const [messageInput, setMessageInput] = useState('')
-  const [uploading, setUploading] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const pollingRef = useRef<NodeJS.Timeout | null>(null)
-  const channelRef = useRef<any>(null)
+  const [friends, setFriends] = useState<any[]>([])
+  const [pendingRequests, setPendingRequests] = useState<any[]>([])
+  const [sentRequests, setSentRequests] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+  const [userId, setUserId] = useState<string>('')
+  const [friendId, setFriendId] = useState<string>('')
+  const [directCheck, setDirectCheck] = useState<any[]>([])
 
-  const addLog = (msg: string) => {
-    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`])
+  const addLog = (message: string) => {
+    const timestamp = new Date().toLocaleTimeString()
+    const log = `[${timestamp}] ${message}`
+    console.log(log)
+    setLogs(prev => [log, ...prev].slice(0, 30))
   }
 
-  // Auto-subscribe when entering chat
+  // Load current user
   useEffect(() => {
-    if (session && inChat && currentSession) {
-      addLog('🔄 Auto-subscribing to messages...')
-      subscribeToMessages(currentSession.id)
+    if (identity?.guest_id) {
+      setUserId(identity.guest_id)
+      addLog(`👤 Current user ID: ${identity.guest_id} (${identity.display_name})`)
     }
-  }, [session, inChat, currentSession])
+  }, [identity])
 
-  const testConnection = async () => {
-    try {
-      addLog('🔍 Testing Supabase connection...')
-      const { error } = await supabase.from('matchmaking_queue').select('count').limit(1)
-      if (error) throw error
-      addLog('✅ Connection OK')
-    } catch (err: any) {
-      addLog(`❌ Connection failed: ${err.message}`)
-    }
-  }
-
-  const testGuestSession = async () => {
-    try {
-      addLog('🎨 Creating guest session...')
-      const { data, error } = await supabase.rpc('create_guest_session')
-      if (error) throw error
-      
-      if (data && data.length > 0) {
-        const guestSession = data[0]
-        setSession(guestSession)
-        addLog(`✅ Got fun name: ${guestSession.display_name}`)
-      }
-    } catch (err: any) {
-      addLog(`❌ Failed: ${err.message}`)
-    }
-  }
-
-  const testQueue = async () => {
-    try {
-      if (!session) {
-        addLog('❌ Create guest session first')
-        return
-      }
-
-      addLog('🎯 Joining queue...')
-      
-      // Clean up any old entries
-      await supabase.from('matchmaking_queue').delete().eq('user_id', session.guest_id)
-
-      const { error } = await supabase.from('matchmaking_queue').insert({
-        user_id: session.guest_id,
-        display_name: session.display_name,
-        is_guest: true,
-        tier: 'free',
-        interests: [],
-        entered_at: new Date().toISOString()
-      })
-
-      if (error) throw error
-      addLog('✅ Joined queue')
-      setInQueue(true)
-
-      // Start super aggressive checking
-      startMatchChecking()
-
-    } catch (err: any) {
-      addLog(`❌ Failed: ${err.message}`)
-    }
-  }
-
-  const startMatchChecking = () => {
-    addLog('⏱️ Starting SUPER AGGRESSIVE polling (500ms)...')
-    
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current)
-    }
-    
-    // Check immediately
-    setTimeout(checkForMatch, 100)
-    
-    // Then check every 500ms
-    pollingRef.current = setInterval(checkForMatch, 500)
-  }
-
-  const forceCheck = async () => {
-    addLog('🔍 FORCE CHECKING NOW...')
-    await checkForMatch()
-  }
-
-  const checkForMatch = async () => {
-    if (!session) {
-      addLog('❌ No session - polling stopped')
+  // Check database for all friend records
+  const checkDatabase = async () => {
+    if (!userId) {
+      addLog('❌ No user ID set')
       return
     }
 
-    try {
-      addLog('🔍 Polling... checking for match')
+    addLog('🔍 Checking database for friend records...')
+    setLoading(true)
+
+    const { data, error } = await supabase
+      .from('friends')
+      .select(`
+        *,
+        requester:guest_sessions!user_id(display_name),
+        friend:guest_sessions!friend_id(display_name)
+      `)
+      .or(`user_id.eq.${userId},friend_id.eq.${userId}`)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      addLog(`❌ Database error: ${error.message}`)
+    } else {
+      addLog(`✅ Found ${data?.length || 0} records`)
+      setDirectCheck(data || [])
       
-      // CRITICAL: ALWAYS check for existing sessions FIRST
-      const { data: existingSession } = await supabase
-        .from('chat_sessions')
-        .select('*')
-        .or(`user1_id.eq.${session.guest_id},user2_id.eq.${session.guest_id}`)
-        .eq('status', 'active')
-        .maybeSingle()
-
-      // If found, IMMEDIATELY switch to chat mode
-      if (existingSession) {
-        addLog(`✅ MATCH FOUND! Session: ${existingSession.id.slice(0, 8)}...`)
-        
-        // Kill all polling
-        if (pollingRef.current) {
-          clearInterval(pollingRef.current)
-          pollingRef.current = null
-        }
-        
-        // Switch to chat mode
-        setInQueue(false)
-        setInChat(true)
-        setCurrentSession(existingSession)
-        loadMessages(existingSession.id)
-        // subscribeToMessages will be triggered by useEffect
-        return
-      }
-
-      // Only check queue if we're supposed to be in it
-      if (!inQueue) {
-        addLog('⏸️ Not in queue - skipping check')
-        return
-      }
-
-      // Get ALL queue entries
-      const { data: queue, error } = await supabase
-        .from('matchmaking_queue')
-        .select('*')
-        .is('matched_at', null)
-        .order('entered_at', { ascending: true })
-
-      if (error) {
-        addLog(`❌ Queue error: ${error.message}`)
-        return
-      }
-
-      // Log full queue
-      if (queue && queue.length > 0) {
-        addLog(`📊 QUEUE (${queue.length} users):`)
-        queue.forEach((entry, i) => {
-          const isMe = entry.user_id === session.guest_id
-          addLog(`   ${i+1}. ${entry.display_name} ${isMe ? '👤 YOU' : ''} - ${new Date(entry.entered_at).toLocaleTimeString()}`)
-        })
-      } else {
-        addLog('📭 Queue is empty')
-        return
-      }
-
-      // Find partner (not yourself)
-      const partner = queue.find(u => u.user_id !== session.guest_id)
-
-      if (!partner) {
-        addLog('⏳ No other users in queue')
-        return
-      }
-
-      addLog(`🎯 Found partner: ${partner.display_name}`)
+      // Separate into categories
+      const sent = data?.filter(r => r.user_id === userId && r.status === 'pending') || []
+      const received = data?.filter(r => r.friend_id === userId && r.status === 'pending') || []
+      const accepted = data?.filter(r => r.status === 'accepted') || []
       
-      const shouldCreate = session.guest_id < partner.user_id
-      addLog(`🎲 ${shouldCreate ? 'I CREATE session' : 'WAITING for partner to create'}`)
-
-      if (shouldCreate) {
-        await createChatSession(partner)
-      }
-
-    } catch (err: any) {
-      addLog(`❌ Check error: ${err.message}`)
+      setSentRequests(sent)
+      setPendingRequests(received)
+      setFriends(accepted)
+      
+      data?.forEach((record, i) => {
+        const isSent = record.user_id === userId
+        const otherName = isSent 
+          ? record.friend?.[0]?.display_name 
+          : record.requester?.[0]?.display_name
+        addLog(`  ${i+1}. ${isSent ? 'SENT to' : 'RECEIVED from'} ${otherName || 'Unknown'} (${record.status})`)
+      })
     }
+    setLoading(false)
   }
 
-  const createChatSession = async (partner: any) => {
+  // Send test friend request
+  const sendTestRequest = async () => {
+    if (!userId || !friendId) {
+      addLog('❌ Need both User ID and Friend ID')
+      return
+    }
+
+    addLog(`📨 Sending friend request from ${userId.slice(0,8)} to ${friendId.slice(0,8)}...`)
+
     try {
-      addLog('🔨 Creating chat session...')
-      
-      const { error: updateError } = await supabase
-        .from('matchmaking_queue')
-        .update({ matched_at: new Date().toISOString() })
-        .in('user_id', [session.guest_id, partner.user_id])
+      // Check if exists
+      const { data: existing } = await supabase
+        .from('friends')
+        .select('*')
+        .or(`and(user_id.eq.${userId},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${userId})`)
+        .maybeSingle()
 
-      if (updateError) throw updateError
+      if (existing) {
+        addLog(`⚠️ Already exists: ${existing.status}`)
+        return
+      }
 
-      const { data: newSession, error: insertError } = await supabase
-        .from('chat_sessions')
+      const { data, error } = await supabase
+        .from('friends')
         .insert({
-          user1_id: session.guest_id,
-          user2_id: partner.user_id,
-          user1_display_name: session.display_name,
-          user2_display_name: partner.display_name,
-          status: 'active',
-          started_at: new Date().toISOString()
+          user_id: userId,
+          friend_id: friendId,
+          status: 'pending',
+          created_at: new Date().toISOString()
         })
         .select()
         .single()
 
-      if (insertError) throw insertError
-
-      addLog(`✅ Session created! ID: ${newSession.id.slice(0, 8)}...`)
-      
-      // Remove from queue
-      await supabase.from('matchmaking_queue').delete().in('user_id', [session.guest_id, partner.user_id])
-
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current)
-        pollingRef.current = null
+      if (error) {
+        addLog(`❌ Failed: ${error.message}`)
+      } else {
+        addLog(`✅ Success! Request ID: ${data.id.slice(0,8)}`)
+        await checkDatabase()
       }
-      setInQueue(false)
-      setInChat(true)
-      setCurrentSession(newSession)
-      loadMessages(newSession.id)
-      // subscribeToMessages will be triggered by useEffect
-
     } catch (err: any) {
-      addLog(`❌ Session creation failed: ${err.message}`)
+      addLog(`❌ Error: ${err.message}`)
     }
   }
 
-  const loadMessages = async (sessionId: string) => {
-    const { data } = await supabase
-      .from('messages')
-      .select('*')
-      .eq('session_id', sessionId)
-      .order('created_at', { ascending: true })
+  // Accept request
+  const acceptRequest = async (requestId: string) => {
+    addLog(`✅ Accepting request ${requestId.slice(0,8)}...`)
+    
+    const { error } = await supabase
+      .from('friends')
+      .update({ status: 'accepted' })
+      .eq('id', requestId)
 
-    if (data) {
-      setMessages(data)
-      data.forEach(msg => {
-        if (msg.content.startsWith('📷 Image:')) {
-          addLog(`🖼️ ${msg.sender_display_name} shared an image`)
-        } else {
-          addLog(`💬 ${msg.sender_display_name}: ${msg.content}`)
-        }
-      })
+    if (error) {
+      addLog(`❌ Failed: ${error.message}`)
+    } else {
+      addLog(`✅ Request accepted`)
+      await checkDatabase()
     }
   }
 
-  const subscribeToMessages = (sessionId: string) => {
-    // If already subscribed to this session, don't create another channel
-    if (channelRef.current) {
-      addLog('⚠️ Already have a channel, skipping duplicate subscription')
-      return
+  // Reject request
+  const rejectRequest = async (requestId: string) => {
+    addLog(`❌ Rejecting request ${requestId.slice(0,8)}...`)
+    
+    const { error } = await supabase
+      .from('friends')
+      .delete()
+      .eq('id', requestId)
+
+    if (error) {
+      addLog(`❌ Failed: ${error.message}`)
+    } else {
+      addLog(`✅ Request rejected`)
+      await checkDatabase()
     }
+  }
 
-    addLog(`📡 Setting up message subscription for session: ${sessionId.slice(0, 8)}...`)
+  // Test realtime subscription
+  const testRealtime = () => {
+    addLog('🔌 Setting up realtime test subscription...')
     
-    // Create new channel with unique ID
-    const channel = supabase.channel(`chat-${sessionId}-${Date.now()}`, {
-      config: {
-        broadcast: { self: true },
-        presence: { key: session.guest_id }
-      }
-    })
+    const channel = supabase.channel('friends-debug')
     
-    channelRef.current = channel
-
     channel
       .on('postgres_changes', {
-        event: 'INSERT',
+        event: '*',
         schema: 'public',
-        table: 'messages',
-        filter: `session_id=eq.${sessionId}`
+        table: 'friends'
       }, (payload) => {
-        const msg = payload.new
-        if (msg.content.startsWith('📷 Image:')) {
-          addLog(`🖼️ ${msg.sender_display_name} shared an image`)
-        } else {
-          addLog(`📨 New message: ${msg.sender_display_name} says "${msg.content}"`)
-        }
-        
-        setMessages(prev => {
-          if (prev.some(m => m.id === msg.id)) {
-            return prev
-          }
-          return [...prev, msg]
-        })
-        
-        setTimeout(() => {
-          const chatDiv = document.getElementById('chat-messages')
-          if (chatDiv) chatDiv.scrollTop = chatDiv.scrollHeight
-        }, 100)
+        addLog(`📡 REALTIME EVENT: ${payload.eventType}`)
+        addLog(`   New: ${JSON.stringify(payload.new)}`)
+        if (payload.old) addLog(`   Old: ${JSON.stringify(payload.old)}`)
       })
       .subscribe((status) => {
         addLog(`📡 Channel status: ${status}`)
-        
-        if (status === 'SUBSCRIBED') {
-          addLog(`✅ Successfully subscribed!`)
-        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          addLog(`❌ Channel error - retrying in 2s...`)
-          channelRef.current = null // Clear so we can retry
-          setTimeout(() => subscribeToMessages(sessionId), 2000)
-        }
       })
-  }
 
-  const sendMessage = async () => {
-    if (!messageInput.trim() || !currentSession || !session) return
-
-    try {
-      const message = {
-        session_id: currentSession.id,
-        sender_id: session.guest_id,
-        sender_is_guest: true,
-        sender_display_name: session.display_name,
-        content: messageInput,
-        created_at: new Date().toISOString()
-      }
-
-      const { error } = await supabase.from('messages').insert(message)
-      
-      if (error) throw error
-      
-      setMessageInput('')
-      addLog(`✉️ You sent: ${messageInput}`)
-    } catch (err: any) {
-      addLog(`❌ Failed to send: ${err.message}`)
+    return () => {
+      channel.unsubscribe()
     }
-  }
-
-  // NEW: Upload image function
-  const uploadImage = async (file: File) => {
-    if (!currentSession || !session) {
-      addLog('❌ No active chat session')
-      return
-    }
-
-    setUploading(true)
-    addLog(`📤 Uploading image: ${file.name}...`)
-
-    try {
-      // Generate unique filename
-      const fileExt = file.name.split('.').pop()
-      const fileName = `${session.guest_id}/${currentSession.id}/${Date.now()}.${fileExt}`
-      const filePath = `chat-images/${fileName}`
-
-      // Upload to Supabase Storage
-      const { error: uploadError } = await supabase.storage
-        .from('chat-images')
-        .upload(filePath, file)
-
-      if (uploadError) throw uploadError
-
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('chat-images')
-        .getPublicUrl(filePath)
-
-      // Send message with image URL
-      const message = {
-        session_id: currentSession.id,
-        sender_id: session.guest_id,
-        sender_is_guest: true,
-        sender_display_name: session.display_name,
-        content: `📷 Image: ${publicUrl}`,
-        created_at: new Date().toISOString()
-      }
-
-      const { error: messageError } = await supabase.from('messages').insert(message)
-      
-      if (messageError) throw messageError
-      
-      addLog(`✅ Image uploaded and shared!`)
-      
-    } catch (err: any) {
-      addLog(`❌ Failed to upload image: ${err.message}`)
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  // NEW: Handle file selection
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    // Check file type
-    if (!file.type.startsWith('image/')) {
-      addLog('❌ Please select an image file')
-      return
-    }
-
-    // Check file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      addLog('❌ Image must be less than 5MB')
-      return
-    }
-
-    uploadImage(file)
-    
-    // Reset file input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
-    }
-  }
-
-  const leaveQueue = async () => {
-    if (!session) return
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current)
-      pollingRef.current = null
-    }
-    await supabase.from('matchmaking_queue').delete().eq('user_id', session.guest_id)
-    setInQueue(false)
-    addLog('🚪 Left queue')
-  }
-
-  const endChat = async () => {
-    if (!currentSession) return
-    
-    // Clean up channel
-    if (channelRef.current) {
-      addLog('🧹 Cleaning up chat channel')
-      supabase.removeChannel(channelRef.current)
-      channelRef.current = null
-    }
-    
-    await supabase
-      .from('chat_sessions')
-      .update({ status: 'ended', ended_at: new Date().toISOString() })
-      .eq('id', currentSession.id)
-    
-    setInChat(false)
-    setCurrentSession(null)
-    setMessages([])
-    addLog('👋 Chat ended')
-  }
-
-  const reset = () => {
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current)
-      pollingRef.current = null
-    }
-    
-    if (channelRef.current) {
-      supabase.removeChannel(channelRef.current)
-      channelRef.current = null
-    }
-    
-    supabase.removeAllChannels()
-    
-    if (session) {
-      supabase.from('matchmaking_queue').delete().eq('user_id', session.guest_id)
-    }
-    
-    setSession(null)
-    setInQueue(false)
-    setInChat(false)
-    setCurrentSession(null)
-    setMessages([])
-    setLogs([])
-    addLog('🔄 Reset complete')
   }
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'monospace', maxWidth: '800px', margin: '0 auto', background: '#0a0a1a', minHeight: '100vh', color: '#fff' }}>
-      <h1 style={{ color: '#0ff', textAlign: 'center' }}>🐞 AUTO-MATCH DEBUG</h1>
-      <p style={{ textAlign: 'center', color: '#999', marginBottom: '20px' }}>Now with 500ms SUPER aggressive polling + 📷 Image Sharing!</p>
-      
-      <div style={{ marginBottom: '20px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-        <button onClick={testConnection} style={buttonStyle}>Test Connection</button>
-        <button onClick={testGuestSession} style={buttonStyle}>Create Guest</button>
-        {!inQueue && !inChat && session && (
-          <button onClick={testQueue} style={{...buttonStyle, background: '#0f0', color: '#000'}}>
-            Join Queue
-          </button>
-        )}
-        {inQueue && (
-          <>
-            <button onClick={forceCheck} style={{...buttonStyle, background: '#ff0', color: '#000'}}>
-              🔍 Force Check
-            </button>
-            <button onClick={leaveQueue} style={{...buttonStyle, background: '#f00', color: '#fff'}}>
-              Leave Queue
-            </button>
-          </>
-        )}
-        {inChat && (
-          <>
-            <button onClick={endChat} style={{...buttonStyle, background: '#f00', color: '#fff'}}>
-              End Chat
-            </button>
-          </>
-        )}
-        <button onClick={reset} style={{...buttonStyle, background: '#666'}}>Reset</button>
-        <button onClick={() => setLogs([])} style={buttonStyle}>Clear Logs</button>
-      </div>
+    <div style={{
+      minHeight: '100vh',
+      background: '#0a0a0f',
+      color: '#f0f0f0',
+      padding: '20px',
+      fontFamily: 'monospace',
+    }}>
+      <h1 style={{ fontSize: '28px', color: '#7c3aed', marginBottom: '20px' }}>
+        🐞 FRIENDS DEBUG PAGE
+      </h1>
 
-      {session && (
-        <div style={{ background: '#1a1a2e', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #0ff' }}>
-          <div><strong style={{ color: '#0ff' }}>Name:</strong> <span style={{ color: '#ff0', fontWeight: 'bold', fontSize: '18px' }}>{session.display_name}</span></div>
-          <div><strong style={{ color: '#0ff' }}>ID:</strong> {session.guest_id.slice(0, 8)}...</div>
-          <div><strong style={{ color: '#0ff' }}>Status:</strong> 
-            <span style={{ 
-              color: inChat ? '#0f0' : (inQueue ? '#ff0' : '#f00'),
-              fontWeight: 'bold',
-              marginLeft: '10px'
-            }}>
-              {inChat ? '💬 IN CHAT' : (inQueue ? '⏳ IN QUEUE' : '🔴 IDLE')}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {inChat && currentSession && (
-        <div style={{ background: '#16213e', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '2px solid #0f0' }}>
-          <h3 style={{ color: '#0f0', marginBottom: '10px' }}>
-            💬 CHAT ACTIVE - {currentSession.user1_id === session?.guest_id 
-              ? currentSession.user2_display_name 
-              : currentSession.user1_display_name}
-          </h3>
-          <div 
-            id="chat-messages" 
-            style={{ 
-              height: '250px', 
-              overflowY: 'auto', 
-              background: '#1a1a2e', 
-              padding: '10px', 
-              marginBottom: '10px', 
-              borderRadius: '5px',
-              border: '1px solid #333'
-            }}
-          >
-            {messages.length === 0 ? (
-              <div style={{ color: '#666', textAlign: 'center', paddingTop: '100px' }}>No messages yet. Say hi or share an image!</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+        {/* Left Column - Controls */}
+        <div>
+          {/* Current User */}
+          <div style={{
+            background: '#1a1a2e',
+            borderRadius: '8px',
+            padding: '16px',
+            marginBottom: '20px',
+            border: '1px solid #7c3aed',
+          }}>
+            <h2 style={{ fontSize: '16px', color: '#7c3aed', marginBottom: '12px' }}>
+              👤 CURRENT USER
+            </h2>
+            {identity ? (
+              <>
+                <p><strong>ID:</strong> {identity.guest_id}</p>
+                <p><strong>Name:</strong> {identity.display_name}</p>
+                <p><strong>Expires:</strong> {new Date(identity.expires_at).toLocaleString()}</p>
+              </>
             ) : (
-              messages.map((msg, i) => {
-                const isImage = msg.content.startsWith('📷 Image:')
-                const imageUrl = isImage ? msg.content.replace('📷 Image: ', '') : null
-                
-                return (
-                  <div key={msg.id || i} style={{ 
-                    color: msg.sender_id === session?.guest_id ? '#0ff' : '#ff0', 
-                    marginBottom: '12px',
-                    padding: '8px',
-                    borderLeft: msg.sender_id === session?.guest_id ? '3px solid #0ff' : '3px solid #ff0',
-                    paddingLeft: '10px',
-                    background: msg.sender_id === session?.guest_id ? 'rgba(0,255,255,0.05)' : 'rgba(255,255,0,0.05)'
-                  }}>
-                    <strong>{msg.sender_display_name}:</strong>
-                    {isImage ? (
-                      <div>
-                        <div>📷 Shared an image</div>
-                        <img 
-                          src={imageUrl} 
-                          alt="Shared" 
-                          style={{ 
-                            maxWidth: '200px', 
-                            maxHeight: '150px', 
-                            borderRadius: '8px',
-                            marginTop: '5px',
-                            border: '2px solid #333'
-                          }} 
-                        />
-                      </div>
-                    ) : (
-                      <span> {msg.content}</span>
-                    )}
-                  </div>
-                )
-              })
+              <p>Loading identity...</p>
             )}
           </div>
-          <div style={{ display: 'flex', gap: '5px', marginBottom: '10px' }}>
-            <input
-              value={messageInput}
-              onChange={(e) => setMessageInput(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-              placeholder="Type a message..."
-              style={{ 
-                flex: 1, 
-                padding: '10px',
-                background: '#1a1a2e',
-                border: '1px solid #0ff',
-                borderRadius: '4px',
-                color: '#fff',
-                fontSize: '14px'
-              }}
-            />
-            <button onClick={sendMessage} style={{...buttonStyle, padding: '10px 20px'}}>Send</button>
+
+          {/* Manual Controls */}
+          <div style={{
+            background: '#1a1a2e',
+            borderRadius: '8px',
+            padding: '16px',
+            marginBottom: '20px',
+          }}>
+            <h2 style={{ fontSize: '16px', color: '#7c3aed', marginBottom: '12px' }}>
+              🎮 MANUAL CONTROLS
+            </h2>
+            
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px', color: '#a0a0b0' }}>
+                Your User ID:
+              </label>
+              <input
+                type="text"
+                value={userId}
+                onChange={(e) => setUserId(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  background: '#0a0a0f',
+                  border: '1px solid #333',
+                  borderRadius: '4px',
+                  color: '#f0f0f0',
+                  fontSize: '12px',
+                }}
+                placeholder="Paste user ID here"
+              />
+            </div>
+
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px', color: '#a0a0b0' }}>
+                Friend's User ID:
+              </label>
+              <input
+                type="text"
+                value={friendId}
+                onChange={(e) => setFriendId(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  background: '#0a0a0f',
+                  border: '1px solid #333',
+                  borderRadius: '4px',
+                  color: '#f0f0f0',
+                  fontSize: '12px',
+                }}
+                placeholder="Paste friend ID here"
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button
+                onClick={checkDatabase}
+                style={buttonStyle}
+              >
+                🔍 Check Database
+              </button>
+              <button
+                onClick={sendTestRequest}
+                style={{...buttonStyle, background: '#7c3aed'}}
+                disabled={!userId || !friendId}
+              >
+                📨 Send Test Request
+              </button>
+              <button
+                onClick={testRealtime}
+                style={{...buttonStyle, background: '#f59e0b'}}
+              >
+                📡 Test Realtime
+              </button>
+            </div>
           </div>
-          
-          {/* NEW: Image upload button */}
-          <div style={{ display: 'flex', gap: '5px' }}>
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileSelect}
-              accept="image/*"
-              style={{ display: 'none' }}
-            />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              style={{
-                ...buttonStyle,
-                background: uploading ? '#666' : '#f0f',
-                flex: 1,
-                opacity: uploading ? 0.5 : 1
-              }}
-            >
-              {uploading ? '📤 Uploading...' : '📷 Share Image'}
-            </button>
+
+          {/* Database Results */}
+          <div style={{
+            background: '#1a1a2e',
+            borderRadius: '8px',
+            padding: '16px',
+          }}>
+            <h2 style={{ fontSize: '16px', color: '#7c3aed', marginBottom: '12px' }}>
+              📊 DATABASE RESULTS
+            </h2>
+            
+            <div style={{ marginBottom: '16px' }}>
+              <p><strong>Friends:</strong> {friends.length}</p>
+              <p><strong>Received:</strong> {pendingRequests.length}</p>
+              <p><strong>Sent:</strong> {sentRequests.length}</p>
+            </div>
+
+            {directCheck.length > 0 && (
+              <div>
+                <h3 style={{ fontSize: '14px', color: '#f0f0f0', marginBottom: '8px' }}>
+                  All Records:
+                </h3>
+                {directCheck.map((record, i) => {
+                  const isSent = record.user_id === userId
+                  const otherName = isSent 
+                    ? record.friend?.[0]?.display_name 
+                    : record.requester?.[0]?.display_name
+                  return (
+                    <div key={record.id} style={{
+                      background: '#0a0a0f',
+                      padding: '10px',
+                      borderRadius: '4px',
+                      marginBottom: '8px',
+                      border: '1px solid #333',
+                    }}>
+                      <p><strong>ID:</strong> {record.id.slice(0,8)}...</p>
+                      <p><strong>Type:</strong> {isSent ? 'SENT' : 'RECEIVED'}</p>
+                      <p><strong>With:</strong> {otherName || 'Unknown'}</p>
+                      <p><strong>Status:</strong> 
+                        <span style={{
+                          color: record.status === 'accepted' ? '#22c55e' : 
+                                 record.status === 'pending' ? '#f59e0b' : '#ef4444'
+                        }}>
+                          {' '}{record.status}
+                        </span>
+                      </p>
+                      <p><strong>Created:</strong> {new Date(record.created_at).toLocaleString()}</p>
+                      
+                      {record.status === 'pending' && record.friend_id === userId && (
+                        <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                          <button
+                            onClick={() => acceptRequest(record.id)}
+                            style={{...smallButtonStyle, background: '#22c55e'}}
+                          >
+                            Accept
+                          </button>
+                          <button
+                            onClick={() => rejectRequest(record.id)}
+                            style={{...smallButtonStyle, background: '#ef4444'}}
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </div>
-      )}
 
-      <div style={{ 
-        background: '#000', 
-        color: '#0f0', 
-        padding: '15px', 
-        borderRadius: '8px',
-        height: '300px',
-        overflowY: 'auto',
-        fontSize: '12px',
-        fontFamily: 'monospace',
-        border: '1px solid #0f0'
-      }}>
-        {logs.length === 0 ? (
-          <div style={{ color: '#666', textAlign: 'center', paddingTop: '140px' }}>Logs will appear here...</div>
-        ) : (
-          logs.map((log, i) => (
-            <div key={i} style={{ marginBottom: '3px', whiteSpace: 'pre-wrap' }}>{log}</div>
-          ))
-        )}
+        {/* Right Column - Logs */}
+        <div style={{
+          background: '#1a1a2e',
+          borderRadius: '8px',
+          padding: '16px',
+          height: 'fit-content',
+          border: '1px solid #7c3aed',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+            <h2 style={{ fontSize: '16px', color: '#7c3aed' }}>📋 EVENT LOG</h2>
+            <button
+              onClick={() => setLogs([])}
+              style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}
+            >
+              Clear
+            </button>
+          </div>
+          
+          <div style={{
+            height: '600px',
+            overflowY: 'auto',
+            fontFamily: 'monospace',
+            fontSize: '11px',
+            color: '#0f0',
+          }}>
+            {logs.length === 0 ? (
+              <div style={{ color: '#666', textAlign: 'center', padding: '20px' }}>
+                No logs yet. Run some tests!
+              </div>
+            ) : (
+              logs.map((log, i) => (
+                <div key={i} style={{ marginBottom: '4px', borderBottom: '1px solid #333', paddingBottom: '4px' }}>
+                  {log}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
       </div>
 
-      <div style={{ marginTop: '20px', color: '#999', fontSize: '13px', padding: '15px', background: '#1a1a2e', borderRadius: '8px' }}>
-        <p>✅ <strong style={{ color: '#0ff' }}>500ms POLLING:</strong> Matches detect in under 1 second!</p>
-        <p>📷 <strong style={{ color: '#f0f' }}>NEW: Image Sharing:</strong> Click the pink button to share images</p>
-        <p>📡 <strong style={{ color: '#0f0' }}>Auto-Retry:</strong> Channels automatically reconnect on error</p>
-        <p>🖼️ <strong style={{ color: '#ff0' }}>Max 5MB:</strong> Images are stored in Supabase Storage</p>
+      {/* Quick IDs Section */}
+      <div style={{
+        marginTop: '20px',
+        background: '#1a1a2e',
+        borderRadius: '8px',
+        padding: '16px',
+      }}>
+        <h2 style={{ fontSize: '16px', color: '#7c3aed', marginBottom: '12px' }}>
+          🔑 QUICK IDS FROM LOGS
+        </h2>
+        <p style={{ fontSize: '12px', color: '#a0a0b0' }}>
+          From your logs: 
+          Phone 1: 98909424... 
+          Phone 2: 3747cec5...
+        </p>
+        <p style={{ fontSize: '12px', color: '#a0a0b0', marginTop: '8px' }}>
+          Try sending a request from Phone 1 (98909424) to Phone 2 (3747cec5) using the manual controls above.
+        </p>
       </div>
     </div>
   )
 }
 
 const buttonStyle = {
-  padding: '10px 16px',
-  background: '#0ff',
+  padding: '8px 16px',
+  background: '#333',
   border: 'none',
-  borderRadius: '6px',
+  borderRadius: '4px',
+  color: 'white',
+  fontSize: '12px',
   cursor: 'pointer',
-  fontWeight: 'bold',
-  fontSize: '14px',
-  color: '#000',
-  transition: 'all 0.2s'
+  transition: 'all 0.2s',
+}
+
+const smallButtonStyle = {
+  padding: '4px 8px',
+  border: 'none',
+  borderRadius: '4px',
+  color: 'white',
+  fontSize: '11px',
+  cursor: 'pointer',
 }
