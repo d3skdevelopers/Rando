@@ -12,6 +12,7 @@ export function useFriends(userId: string | undefined) {
   const [error, setError] = useState<string | null>(null)
   
   const channelRef = useRef<RealtimeChannel | null>(null)
+  const pollingRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     if (!userId) {
@@ -22,11 +23,21 @@ export function useFriends(userId: string | undefined) {
     loadFriends()
     loadRequests()
     setupRealtime()
+    
+    // Set up polling as backup (every 5 seconds)
+    pollingRef.current = setInterval(() => {
+      console.log('🔄 Polling fallback: checking for updates')
+      loadRequests()
+      loadFriends()
+    }, 5000)
 
     return () => {
       if (channelRef.current) {
         console.log('🧹 Cleaning up friends channel')
         supabase.removeChannel(channelRef.current)
+      }
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current)
       }
     }
   }, [userId])
@@ -124,35 +135,47 @@ export function useFriends(userId: string | undefined) {
     
     // Create a unique channel name
     const channelName = `friends-${userId}-${Date.now()}`
-    const channel = supabase.channel(channelName, {
-      config: {
-        broadcast: { self: true },
-        presence: { key: userId }
-      }
-    })
+    const channel = supabase.channel(channelName)
     
     channelRef.current = channel
 
-    // Listen for ALL friend-related changes
+    // Listen for ALL friend-related changes - using a more direct approach
     channel
       .on('postgres_changes', {
-        event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
+        event: 'INSERT',
         schema: 'public',
         table: 'friends',
         filter: `friend_id=eq.${userId}`
       }, (payload) => {
-        console.log('📨 Friend request event (as friend):', payload)
-        // Reload both sent and received to be safe
-        loadRequests()
-        loadFriends()
+        console.log('📨 New friend request RECEIVED:', payload)
+        loadRequests() // Reload immediately
       })
       .on('postgres_changes', {
-        event: '*',
+        event: 'INSERT',
         schema: 'public',
         table: 'friends',
         filter: `user_id=eq.${userId}`
       }, (payload) => {
-        console.log('📨 Friend request event (as user):', payload)
+        console.log('📨 New friend request SENT:', payload)
+        loadRequests()
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'friends',
+        filter: `friend_id=eq.${userId}`
+      }, (payload) => {
+        console.log('📨 Friend request UPDATED (as friend):', payload)
+        loadRequests()
+        loadFriends()
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'friends',
+        filter: `user_id=eq.${userId}`
+      }, (payload) => {
+        console.log('📨 Friend request UPDATED (as user):', payload)
         loadRequests()
         loadFriends()
       })
@@ -185,15 +208,11 @@ export function useFriends(userId: string | undefined) {
 
     try {
       // Check if they're already friends or request exists
-      const { data: existing, error: checkError } = await supabase
+      const { data: existing } = await supabase
         .from('friends')
         .select('*')
         .or(`and(user_id.eq.${userId},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${userId})`)
         .maybeSingle()
-
-      if (checkError) {
-        console.error('❌ Error checking existing friendship:', checkError)
-      }
 
       if (existing) {
         console.log('⚠️ Friend relationship already exists:', existing)
@@ -214,15 +233,7 @@ export function useFriends(userId: string | undefined) {
 
       if (error) {
         console.error('❌ Error sending friend request:', error)
-        
-        // Check for specific error types
-        if (error.message.includes('duplicate key')) {
-          alert('Friend request already sent')
-        } else if (error.message.includes('row-level security')) {
-          alert('Security policy error. Please try again.')
-        } else {
-          alert(`Failed to send friend request: ${error.message}`)
-        }
+        alert(`Failed to send friend request: ${error.message}`)
         return false
       }
 
@@ -244,7 +255,7 @@ export function useFriends(userId: string | undefined) {
     try {
       const { error } = await supabase
         .from('friends')
-        .update({ status: 'accepted' })
+        .update({ status: 'accepted', updated_at: new Date().toISOString() })
         .eq('id', requestId)
 
       if (error) {
