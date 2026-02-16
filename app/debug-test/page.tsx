@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { useIdentity } from '@/hooks/useIdentity'
+import { RealtimeChannel } from '@supabase/supabase-js'
 
 export default function FriendsDebugPage() {
   const { identity } = useIdentity()
@@ -14,12 +15,16 @@ export default function FriendsDebugPage() {
   const [userId, setUserId] = useState<string>('')
   const [friendId, setFriendId] = useState<string>('')
   const [directCheck, setDirectCheck] = useState<any[]>([])
+  const [autoRefresh, setAutoRefresh] = useState(false)
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date())
+  
+  const channelRef = useRef<RealtimeChannel | null>(null)
 
   const addLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString()
     const log = `[${timestamp}] ${message}`
     console.log(log)
-    setLogs(prev => [log, ...prev].slice(0, 30))
+    setLogs(prev => [log, ...prev].slice(0, 50))
   }
 
   // Load current user
@@ -29,6 +34,84 @@ export default function FriendsDebugPage() {
       addLog(`👤 Current user ID: ${identity.guest_id} (${identity.display_name})`)
     }
   }, [identity])
+
+  // Auto-refresh every 2 seconds
+  useEffect(() => {
+    if (!autoRefresh || !userId) return
+    
+    const interval = setInterval(() => {
+      addLog(`🔄 Auto-refreshing...`)
+      checkDatabase()
+    }, 2000)
+    
+    return () => clearInterval(interval)
+  }, [autoRefresh, userId])
+
+  // Setup realtime subscription
+  useEffect(() => {
+    if (!userId) return
+
+    addLog(`🔌 Setting up realtime subscription for user ${userId.slice(0,8)}...`)
+    
+    const channel = supabase.channel(`friends-debug-${userId}`)
+    
+    channelRef.current = channel
+
+    channel
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'friends',
+        filter: `friend_id=eq.${userId}`
+      }, (payload) => {
+        addLog(`📡 🔴 NEW FRIEND REQUEST RECEIVED!`)
+        addLog(`   Request ID: ${payload.new.id.slice(0,8)}`)
+        addLog(`   From user: ${payload.new.user_id.slice(0,8)}`)
+        setLastUpdate(new Date())
+        checkDatabase() // Immediate refresh
+      })
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'friends',
+        filter: `user_id=eq.${userId}`
+      }, (payload) => {
+        addLog(`📡 🔵 FRIEND REQUEST SENT confirmation`)
+        addLog(`   Request ID: ${payload.new.id.slice(0,8)}`)
+        addLog(`   To user: ${payload.new.friend_id.slice(0,8)}`)
+        setLastUpdate(new Date())
+        checkDatabase()
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'friends',
+        filter: `friend_id=eq.${userId}`
+      }, (payload) => {
+        addLog(`📡 🟢 REQUEST UPDATED (as friend): ${payload.new.status}`)
+        setLastUpdate(new Date())
+        checkDatabase()
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'friends',
+        filter: `user_id=eq.${userId}`
+      }, (payload) => {
+        addLog(`📡 🟢 REQUEST UPDATED (as user): ${payload.new.status}`)
+        setLastUpdate(new Date())
+        checkDatabase()
+      })
+      .subscribe((status) => {
+        addLog(`📡 Channel status: ${status}`)
+      })
+
+    return () => {
+      if (channelRef.current) {
+        channelRef.current.unsubscribe()
+      }
+    }
+  }, [userId])
 
   // Check database for all friend records
   const checkDatabase = async () => {
@@ -40,13 +123,10 @@ export default function FriendsDebugPage() {
     addLog('🔍 Checking database for friend records...')
     setLoading(true)
 
+    // First, get all friend records
     const { data, error } = await supabase
       .from('friends')
-      .select(`
-        *,
-        requester:guest_sessions!user_id(display_name),
-        friend:guest_sessions!friend_id(display_name)
-      `)
+      .select('*')
       .or(`user_id.eq.${userId},friend_id.eq.${userId}`)
       .order('created_at', { ascending: false })
 
@@ -54,23 +134,48 @@ export default function FriendsDebugPage() {
       addLog(`❌ Database error: ${error.message}`)
     } else {
       addLog(`✅ Found ${data?.length || 0} records`)
-      setDirectCheck(data || [])
+      
+      // Then manually get display names for each record
+      const enhancedData = []
+      for (const record of data || []) {
+        const otherId = record.user_id === userId ? record.friend_id : record.user_id
+        
+        // Get the other user's display name
+        const { data: userData } = await supabase
+          .from('guest_sessions')
+          .select('display_name')
+          .eq('id', otherId)
+          .single()
+        
+        enhancedData.push({
+          ...record,
+          other_name: userData?.display_name || 'Unknown',
+          other_id: otherId
+        })
+      }
+      
+      setDirectCheck(enhancedData)
       
       // Separate into categories
-      const sent = data?.filter(r => r.user_id === userId && r.status === 'pending') || []
-      const received = data?.filter(r => r.friend_id === userId && r.status === 'pending') || []
-      const accepted = data?.filter(r => r.status === 'accepted') || []
+      const sent = enhancedData.filter(r => r.user_id === userId && r.status === 'pending')
+      const received = enhancedData.filter(r => r.friend_id === userId && r.status === 'pending')
+      const accepted = enhancedData.filter(r => r.status === 'accepted')
       
       setSentRequests(sent)
       setPendingRequests(received)
       setFriends(accepted)
       
-      data?.forEach((record, i) => {
-        const isSent = record.user_id === userId
-        const otherName = isSent 
-          ? record.friend?.[0]?.display_name 
-          : record.requester?.[0]?.display_name
-        addLog(`  ${i+1}. ${isSent ? 'SENT to' : 'RECEIVED from'} ${otherName || 'Unknown'} (${record.status})`)
+      if (received.length > 0) {
+        addLog(`🔴 ${received.length} PENDING REQUESTS RECEIVED!`)
+      }
+      
+      enhancedData.forEach((record, i) => {
+        const emoji = record.user_id === userId 
+          ? '📤' 
+          : record.friend_id === userId && record.status === 'pending' 
+            ? '🔴' 
+            : '📥'
+        addLog(`  ${emoji} ${i+1}. ${record.user_id === userId ? 'SENT to' : 'RECEIVED from'} ${record.other_name} (${record.status})`)
       })
     }
     setLoading(false)
@@ -80,6 +185,11 @@ export default function FriendsDebugPage() {
   const sendTestRequest = async () => {
     if (!userId || !friendId) {
       addLog('❌ Need both User ID and Friend ID')
+      return
+    }
+
+    if (userId === friendId) {
+      addLog('❌ Cannot send friend request to yourself')
       return
     }
 
@@ -154,29 +264,10 @@ export default function FriendsDebugPage() {
     }
   }
 
-  // Test realtime subscription
-  const testRealtime = () => {
-    addLog('🔌 Setting up realtime test subscription...')
-    
-    const channel = supabase.channel('friends-debug')
-    
-    channel
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'friends'
-      }, (payload) => {
-        addLog(`📡 REALTIME EVENT: ${payload.eventType}`)
-        addLog(`   New: ${JSON.stringify(payload.new)}`)
-        if (payload.old) addLog(`   Old: ${JSON.stringify(payload.old)}`)
-      })
-      .subscribe((status) => {
-        addLog(`📡 Channel status: ${status}`)
-      })
-
-    return () => {
-      channel.unsubscribe()
-    }
+  // Copy ID to clipboard
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text)
+    addLog(`📋 Copied to clipboard: ${text.slice(0,8)}...`)
   }
 
   return (
@@ -188,8 +279,30 @@ export default function FriendsDebugPage() {
       fontFamily: 'monospace',
     }}>
       <h1 style={{ fontSize: '28px', color: '#7c3aed', marginBottom: '20px' }}>
-        🐞 FRIENDS DEBUG PAGE
+        🐞 FRIENDS DEBUG PAGE - REAL TIME
       </h1>
+
+      {/* Last Update Banner */}
+      <div style={{
+        background: 'linear-gradient(135deg, #7c3aed20, #4f46e520)',
+        border: '1px solid #7c3aed',
+        borderRadius: '8px',
+        padding: '8px 16px',
+        marginBottom: '20px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+      }}>
+        <span>🕒 Last Update: {lastUpdate.toLocaleTimeString()}</span>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <input
+            type="checkbox"
+            checked={autoRefresh}
+            onChange={(e) => setAutoRefresh(e.target.checked)}
+          />
+          Auto-refresh (2s)
+        </label>
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
         {/* Left Column - Controls */}
@@ -210,6 +323,12 @@ export default function FriendsDebugPage() {
                 <p><strong>ID:</strong> {identity.guest_id}</p>
                 <p><strong>Name:</strong> {identity.display_name}</p>
                 <p><strong>Expires:</strong> {new Date(identity.expires_at).toLocaleString()}</p>
+                <button
+                  onClick={() => copyToClipboard(identity.guest_id)}
+                  style={{...smallButtonStyle, marginTop: '8px'}}
+                >
+                  📋 Copy ID
+                </button>
               </>
             ) : (
               <p>Loading identity...</p>
@@ -231,42 +350,58 @@ export default function FriendsDebugPage() {
               <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px', color: '#a0a0b0' }}>
                 Your User ID:
               </label>
-              <input
-                type="text"
-                value={userId}
-                onChange={(e) => setUserId(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '8px',
-                  background: '#0a0a0f',
-                  border: '1px solid #333',
-                  borderRadius: '4px',
-                  color: '#f0f0f0',
-                  fontSize: '12px',
-                }}
-                placeholder="Paste user ID here"
-              />
+              <div style={{ display: 'flex', gap: '4px' }}>
+                <input
+                  type="text"
+                  value={userId}
+                  onChange={(e) => setUserId(e.target.value)}
+                  style={{
+                    flex: 1,
+                    padding: '8px',
+                    background: '#0a0a0f',
+                    border: '1px solid #333',
+                    borderRadius: '4px',
+                    color: '#f0f0f0',
+                    fontSize: '12px',
+                  }}
+                  placeholder="Paste user ID here"
+                />
+                <button
+                  onClick={() => copyToClipboard(userId)}
+                  style={{...smallButtonStyle, background: '#333'}}
+                >
+                  📋
+                </button>
+              </div>
             </div>
 
             <div style={{ marginBottom: '12px' }}>
               <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px', color: '#a0a0b0' }}>
                 Friend's User ID:
               </label>
-              <input
-                type="text"
-                value={friendId}
-                onChange={(e) => setFriendId(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '8px',
-                  background: '#0a0a0f',
-                  border: '1px solid #333',
-                  borderRadius: '4px',
-                  color: '#f0f0f0',
-                  fontSize: '12px',
-                }}
-                placeholder="Paste friend ID here"
-              />
+              <div style={{ display: 'flex', gap: '4px' }}>
+                <input
+                  type="text"
+                  value={friendId}
+                  onChange={(e) => setFriendId(e.target.value)}
+                  style={{
+                    flex: 1,
+                    padding: '8px',
+                    background: '#0a0a0f',
+                    border: '1px solid #333',
+                    borderRadius: '4px',
+                    color: '#f0f0f0',
+                    fontSize: '12px',
+                  }}
+                  placeholder="Paste friend ID here"
+                />
+                <button
+                  onClick={() => copyToClipboard(friendId)}
+                  style={{...smallButtonStyle, background: '#333'}}
+                >
+                  📋
+                </button>
+              </div>
             </div>
 
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -283,14 +418,50 @@ export default function FriendsDebugPage() {
               >
                 📨 Send Test Request
               </button>
-              <button
-                onClick={testRealtime}
-                style={{...buttonStyle, background: '#f59e0b'}}
-              >
-                📡 Test Realtime
-              </button>
             </div>
           </div>
+
+          {/* Received Requests - Highlighted */}
+          {pendingRequests.length > 0 && (
+            <div style={{
+              background: 'rgba(239,68,68,0.1)',
+              borderRadius: '8px',
+              padding: '16px',
+              marginBottom: '20px',
+              border: '2px solid #ef4444',
+              animation: 'pulse 2s infinite',
+            }}>
+              <h2 style={{ fontSize: '16px', color: '#ef4444', marginBottom: '12px' }}>
+                🔴 {pendingRequests.length} PENDING REQUEST(S) RECEIVED!
+              </h2>
+              {pendingRequests.map(req => (
+                <div key={req.id} style={{
+                  background: '#1a1a2e',
+                  padding: '12px',
+                  borderRadius: '4px',
+                  marginBottom: '8px',
+                }}>
+                  <p><strong>From:</strong> {req.other_name}</p>
+                  <p><strong>ID:</strong> {req.other_id.slice(0,8)}...</p>
+                  <p><strong>Sent:</strong> {new Date(req.created_at).toLocaleString()}</p>
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                    <button
+                      onClick={() => acceptRequest(req.id)}
+                      style={{...smallButtonStyle, background: '#22c55e'}}
+                    >
+                      ✅ Accept
+                    </button>
+                    <button
+                      onClick={() => rejectRequest(req.id)}
+                      style={{...smallButtonStyle, background: '#ef4444'}}
+                    >
+                      ❌ Reject
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Database Results */}
           <div style={{
@@ -304,7 +475,7 @@ export default function FriendsDebugPage() {
             
             <div style={{ marginBottom: '16px' }}>
               <p><strong>Friends:</strong> {friends.length}</p>
-              <p><strong>Received:</strong> {pendingRequests.length}</p>
+              <p><strong>Received:</strong> <span style={{ color: pendingRequests.length > 0 ? '#ef4444' : 'inherit' }}>{pendingRequests.length}</span></p>
               <p><strong>Sent:</strong> {sentRequests.length}</p>
             </div>
 
@@ -315,24 +486,27 @@ export default function FriendsDebugPage() {
                 </h3>
                 {directCheck.map((record, i) => {
                   const isSent = record.user_id === userId
-                  const otherName = isSent 
-                    ? record.friend?.[0]?.display_name 
-                    : record.requester?.[0]?.display_name
+                  const isReceived = record.friend_id === userId && record.status === 'pending'
                   return (
                     <div key={record.id} style={{
-                      background: '#0a0a0f',
+                      background: isReceived ? 'rgba(239,68,68,0.1)' : '#0a0a0f',
                       padding: '10px',
                       borderRadius: '4px',
                       marginBottom: '8px',
-                      border: '1px solid #333',
+                      border: isReceived ? '1px solid #ef4444' : '1px solid #333',
                     }}>
                       <p><strong>ID:</strong> {record.id.slice(0,8)}...</p>
-                      <p><strong>Type:</strong> {isSent ? 'SENT' : 'RECEIVED'}</p>
-                      <p><strong>With:</strong> {otherName || 'Unknown'}</p>
+                      <p><strong>Type:</strong> 
+                        <span style={{ color: isReceived ? '#ef4444' : 'inherit' }}>
+                          {' '}{isSent ? 'SENT' : 'RECEIVED'}
+                        </span>
+                      </p>
+                      <p><strong>With:</strong> {record.other_name || 'Unknown'}</p>
                       <p><strong>Status:</strong> 
                         <span style={{
                           color: record.status === 'accepted' ? '#22c55e' : 
-                                 record.status === 'pending' ? '#f59e0b' : '#ef4444'
+                                 record.status === 'pending' ? '#f59e0b' : '#ef4444',
+                          fontWeight: 'bold'
                         }}>
                           {' '}{record.status}
                         </span>
@@ -403,25 +577,12 @@ export default function FriendsDebugPage() {
         </div>
       </div>
 
-      {/* Quick IDs Section */}
-      <div style={{
-        marginTop: '20px',
-        background: '#1a1a2e',
-        borderRadius: '8px',
-        padding: '16px',
-      }}>
-        <h2 style={{ fontSize: '16px', color: '#7c3aed', marginBottom: '12px' }}>
-          🔑 QUICK IDS FROM LOGS
-        </h2>
-        <p style={{ fontSize: '12px', color: '#a0a0b0' }}>
-          From your logs: 
-          Phone 1: 98909424... 
-          Phone 2: 3747cec5...
-        </p>
-        <p style={{ fontSize: '12px', color: '#a0a0b0', marginTop: '8px' }}>
-          Try sending a request from Phone 1 (98909424) to Phone 2 (3747cec5) using the manual controls above.
-        </p>
-      </div>
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.8; }
+        }
+      `}</style>
     </div>
   )
 }
