@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { supabase } from '@/lib/supabase/client'
 import { useFriends } from '@/hooks/useFriends'
 import { useIdentity } from '@/hooks/useIdentity'
 
@@ -41,7 +42,7 @@ export function ChatSidebar({
     acceptRequest, 
     rejectRequest, 
     removeFriend,
-    refresh  // Added refresh function
+    refresh
   } = useFriends(guestId || identity?.guest_id)
 
   const handleAddFriend = async () => {
@@ -55,11 +56,36 @@ export function ChatSidebar({
     const success = await sendFriendRequest(partnerId)
     if (success) {
       alert(`✅ Friend request sent to ${partnerName}!`)
-      // Switch to requests tab to show sent request
       setActiveTab('requests')
     } else {
       alert('❌ Failed to send friend request')
     }
+  }
+
+  // Debug function to check database directly
+  const debugCheckDatabase = async () => {
+    const currentId = guestId || identity?.guest_id
+    console.log('🔍 DEBUG - Current state:', {
+      userId: currentId,
+      pendingCount: pendingRequests.length,
+      sentCount: sentRequests.length,
+      pendingRequests,
+      sentRequests
+    })
+    
+    // Direct database check
+    const { data: directCheck } = await supabase
+      .from('friends')
+      .select(`
+        *,
+        requester:guest_sessions!user_id(display_name),
+        friend:guest_sessions!friend_id(display_name)
+      `)
+      .or(`user_id.eq.${currentId},friend_id.eq.${currentId}`)
+      .order('created_at', { ascending: false })
+    
+    console.log('📊 DIRECT DATABASE CHECK:', directCheck)
+    alert(`Check console (F12) for debug info\nPending: ${pendingRequests.length}\nSent: ${sentRequests.length}\nTotal in DB: ${directCheck?.length || 0}`)
   }
 
   if (!isOpen) return null
@@ -354,7 +380,7 @@ export function ChatSidebar({
               style={{
                 width: '100%',
                 padding: '8px',
-                marginBottom: '16px',
+                marginBottom: '8px',
                 background: 'rgba(124,58,237,0.1)',
                 border: '1px solid rgba(124,58,237,0.2)',
                 borderRadius: '6px',
@@ -370,6 +396,28 @@ export function ChatSidebar({
               onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(124,58,237,0.1)'}
             >
               <span>🔄</span> Refresh Requests
+            </button>
+
+            {/* Debug Button */}
+            <button
+              onClick={debugCheckDatabase}
+              style={{
+                width: '100%',
+                padding: '8px',
+                marginBottom: '16px',
+                background: '#ef4444',
+                border: 'none',
+                borderRadius: '6px',
+                color: 'white',
+                fontSize: '12px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+              }}
+            >
+              <span>🐞</span> Debug: Check Database
             </button>
 
             <h4 style={{
