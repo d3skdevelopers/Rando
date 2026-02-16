@@ -35,6 +35,8 @@ export function ChatSidebar({
   const [debugLogs, setDebugLogs] = useState<string[]>([])
   const { identity } = useIdentity()
   
+  const currentUserId = guestId || identity?.guest_id
+  
   const { 
     friends, 
     pendingRequests, 
@@ -44,26 +46,49 @@ export function ChatSidebar({
     rejectRequest, 
     removeFriend,
     refresh
-  } = useFriends(guestId || identity?.guest_id)
+  } = useFriends(currentUserId)
+
+  // Log all important state changes
+  useEffect(() => {
+    if (isOpen) {
+      addDebugLog(`📱 SIDEBAR OPENED - User: ${currentUserId?.slice(0, 8)}..., Partner: ${partnerName} (${partnerId?.slice(0, 8)}...)`)
+    }
+  }, [isOpen])
+
+  useEffect(() => {
+    if (activeTab) {
+      addDebugLog(`📌 Tab changed to: ${activeTab}`)
+    }
+  }, [activeTab])
+
+  useEffect(() => {
+    addDebugLog(`👥 Friends loaded: ${friends.length}`)
+  }, [friends])
+
+  useEffect(() => {
+    addDebugLog(`📨 Pending requests: ${pendingRequests.length}, Sent: ${sentRequests.length}`)
+  }, [pendingRequests, sentRequests])
 
   const addDebugLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString()
     const log = `[${timestamp}] ${message}`
     console.log(log)
-    setDebugLogs(prev => [log, ...prev].slice(0, 10)) // Keep last 10 logs
+    setDebugLogs(prev => [log, ...prev].slice(0, 20)) // Keep last 20 logs
   }
 
   const handleAddFriend = async () => {
+    addDebugLog(`➕ ADD FRIEND button clicked - Partner: ${partnerName} (${partnerId?.slice(0, 8)}...)`)
+    
     if (!partnerId) {
       addDebugLog('❌ Add friend failed - no partnerId')
       alert('Cannot add friend: Partner ID not found. Please wait a moment and try again.')
       return
     }
     
-    addDebugLog(`📨 Sending friend request to: ${partnerId}`)
+    addDebugLog(`📨 Sending friend request from ${currentUserId?.slice(0, 8)} to ${partnerId?.slice(0, 8)}`)
     const success = await sendFriendRequest(partnerId)
     if (success) {
-      addDebugLog(`✅ Friend request sent to ${partnerName}`)
+      addDebugLog(`✅ Friend request sent successfully to ${partnerName}`)
       alert(`✅ Friend request sent to ${partnerName}!`)
       setActiveTab('requests')
     } else {
@@ -72,11 +97,37 @@ export function ChatSidebar({
     }
   }
 
+  const handleTabChange = (tab: typeof activeTab) => {
+    addDebugLog(`📌 Switching to ${tab} tab`)
+    setActiveTab(tab)
+  }
+
+  const handleReport = () => {
+    addDebugLog(`⚠️ Report button clicked for ${partnerName}`)
+    onReport()
+  }
+
+  const handleBlock = () => {
+    addDebugLog(`🚫 Block button clicked for ${partnerName}`)
+    onBlock()
+  }
+
+  const handleClose = () => {
+    addDebugLog(`🚪 Sidebar closed`)
+    onClose()
+  }
+
+  const handleRefresh = () => {
+    addDebugLog(`🔄 Manual refresh triggered`)
+    refresh()
+  }
+
   // Debug function to check database directly
   const debugCheckDatabase = async () => {
-    const currentId = guestId || identity?.guest_id
-    addDebugLog(`🔍 DEBUG - Current userId: ${currentId}`)
-    addDebugLog(`📊 State - Pending: ${pendingRequests.length}, Sent: ${sentRequests.length}`)
+    addDebugLog(`🔍 DEBUG CHECK STARTED`)
+    addDebugLog(`👤 Current userId: ${currentUserId?.slice(0, 8)}...`)
+    addDebugLog(`👥 Partner: ${partnerName} (${partnerId?.slice(0, 8)}...)`)
+    addDebugLog(`📊 State - Friends: ${friends.length}, Pending: ${pendingRequests.length}, Sent: ${sentRequests.length}`)
     
     // Direct database check
     const { data: directCheck } = await supabase
@@ -86,16 +137,20 @@ export function ChatSidebar({
         requester:guest_sessions!user_id(display_name),
         friend:guest_sessions!friend_id(display_name)
       `)
-      .or(`user_id.eq.${currentId},friend_id.eq.${currentId}`)
+      .or(`user_id.eq.${currentUserId},friend_id.eq.${currentUserId}`)
       .order('created_at', { ascending: false })
     
     addDebugLog(`📊 DATABASE FOUND: ${directCheck?.length || 0} records`)
     directCheck?.forEach((record, i) => {
-      addDebugLog(`  ${i+1}. ${record.user_id === currentId ? 'SENT' : 'RECEIVED'} to/from ${record.friend?.[0]?.display_name || record.requester?.[0]?.display_name} (${record.status})`)
+      const isSent = record.user_id === currentUserId
+      const otherName = isSent 
+        ? record.friend?.[0]?.display_name 
+        : record.requester?.[0]?.display_name
+      addDebugLog(`  ${i+1}. ${isSent ? 'SENT to' : 'RECEIVED from'} ${otherName} (${record.status})`)
     })
     
     console.log('📊 FULL DATABASE CHECK:', directCheck)
-    alert(`Check top of sidebar for debug logs\nFound ${directCheck?.length || 0} records in database`)
+    alert(`Check debug logs at top of sidebar\nFound ${directCheck?.length || 0} records in database`)
   }
 
   if (!isOpen) return null
@@ -116,33 +171,37 @@ export function ChatSidebar({
       boxShadow: '-5px 0 30px rgba(0,0,0,0.5)',
     }}>
       {/* DEBUG LOGS - AT THE VERY TOP */}
-      {debugLogs.length > 0 && (
-        <div style={{
-          background: '#1a1a2e',
-          borderBottom: '2px solid #7c3aed',
-          padding: '8px 12px',
-          maxHeight: '150px',
-          overflowY: 'auto',
-          fontFamily: 'monospace',
-          fontSize: '11px',
-          color: '#0f0',
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-            <strong style={{ color: '#7c3aed' }}>🐞 DEBUG LOGS</strong>
-            <button 
-              onClick={() => setDebugLogs([])}
-              style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '11px' }}
-            >
-              Clear
-            </button>
+      <div style={{
+        background: '#1a1a2e',
+        borderBottom: '2px solid #7c3aed',
+        padding: '8px 12px',
+        maxHeight: '200px',
+        overflowY: 'auto',
+        fontFamily: 'monospace',
+        fontSize: '11px',
+        color: '#0f0',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+          <strong style={{ color: '#7c3aed' }}>🐞 EVENT LOG</strong>
+          <button 
+            onClick={() => setDebugLogs([])}
+            style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '11px' }}
+          >
+            Clear
+          </button>
+        </div>
+        {debugLogs.length === 0 ? (
+          <div style={{ color: '#666', textAlign: 'center', padding: '10px' }}>
+            No events yet. Click buttons to see logs.
           </div>
-          {debugLogs.map((log, i) => (
+        ) : (
+          debugLogs.map((log, i) => (
             <div key={i} style={{ marginBottom: '2px', borderBottom: '1px solid #333', paddingBottom: '2px' }}>
               {log}
             </div>
-          ))}
-        </div>
-      )}
+          ))
+        )}
+      </div>
 
       {/* Header */}
       <div style={{
@@ -162,7 +221,7 @@ export function ChatSidebar({
           RANDO
         </h3>
         <button
-          onClick={onClose}
+          onClick={handleClose}
           style={{
             background: 'transparent',
             border: '1px solid rgba(124,58,237,0.2)',
@@ -188,7 +247,7 @@ export function ChatSidebar({
         padding: '0 16px',
       }}>
         <button
-          onClick={() => setActiveTab('info')}
+          onClick={() => handleTabChange('info')}
           style={{
             flex: 1,
             padding: '12px 8px',
@@ -203,7 +262,7 @@ export function ChatSidebar({
           Chat Info
         </button>
         <button
-          onClick={() => setActiveTab('friends')}
+          onClick={() => handleTabChange('friends')}
           style={{
             flex: 1,
             padding: '12px 8px',
@@ -218,7 +277,7 @@ export function ChatSidebar({
           Friends {friends.length > 0 && `(${friends.length})`}
         </button>
         <button
-          onClick={() => setActiveTab('requests')}
+          onClick={() => handleTabChange('requests')}
           style={{
             flex: 1,
             padding: '12px 8px',
@@ -340,7 +399,7 @@ export function ChatSidebar({
                 {!partnerId && ' (loading...)'}
               </button>
               <button
-                onClick={onReport}
+                onClick={handleReport}
                 style={actionButtonStyle}
                 onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(124,58,237,0.1)'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
@@ -348,7 +407,7 @@ export function ChatSidebar({
                 ⚠️ Report User
               </button>
               <button
-                onClick={onBlock}
+                onClick={handleBlock}
                 style={{...actionButtonStyle, color: '#ef4444', borderColor: 'rgba(239,68,68,0.2)'}}
                 onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239,68,68,0.1)'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
@@ -399,7 +458,10 @@ export function ChatSidebar({
                     </div>
                   </div>
                   <button
-                    onClick={() => removeFriend(friend.friend_id)}
+                    onClick={() => {
+                      addDebugLog(`🗑️ Removing friend: ${friend.display_name}`)
+                      removeFriend(friend.friend_id)
+                    }}
                     style={removeButtonStyle}
                   >
                     ✕
@@ -415,7 +477,7 @@ export function ChatSidebar({
           <div>
             {/* Manual refresh button */}
             <button
-              onClick={refresh}
+              onClick={handleRefresh}
               style={{
                 width: '100%',
                 padding: '8px',
@@ -495,13 +557,19 @@ export function ChatSidebar({
                     </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <button
-                        onClick={() => acceptRequest(request.id)}
+                        onClick={() => {
+                          addDebugLog(`✅ Accepting request from ${request.display_name}`)
+                          acceptRequest(request.id)
+                        }}
                         style={acceptButtonStyle}
                       >
                         Accept
                       </button>
                       <button
-                        onClick={() => rejectRequest(request.id)}
+                        onClick={() => {
+                          addDebugLog(`❌ Rejecting request from ${request.display_name}`)
+                          rejectRequest(request.id)
+                        }}
                         style={rejectButtonStyle}
                       >
                         Reject
@@ -562,6 +630,7 @@ export function ChatSidebar({
       }}>
         <Link href="/settings/profile" style={{ textDecoration: 'none' }}>
           <button
+            onClick={() => addDebugLog(`⚙️ Settings button clicked`)}
             style={{
               width: '100%',
               padding: '12px',
