@@ -1,0 +1,71 @@
+'use client'
+
+interface ChatHeaderProps {
+  partnerName: string
+  isOnline: boolean
+  isTyping: boolean
+  partnerLeft: boolean
+  mood?: string | null
+  onOpenSidebar: () => void
+  onReport: () => void
+  onEndChat: () => void
+}
+
+const MOOD_MAP: Record<string, { emoji: string; label: string }> = {
+  hype:  { emoji: '🔥', label: 'Hyped' },
+  vent:  { emoji: '💢', label: 'Tilted' },
+  chill: { emoji: '🎮', label: 'Chilling' },
+  squad: { emoji: '🎯', label: 'Looking for squad' },
+}
+
+export function ChatHeader({
+  partnerName, isOnline, isTyping, partnerLeft, mood,
+  onOpenSidebar, onReport, onEndChat,
+}: ChatHeaderProps) {
+  const moodInfo = mood ? MOOD_MAP[mood] : null
+
+  return (
+    <div style={{ background: 'rgba(10,10,15,0.95)', backdropFilter: 'blur(10px)', borderBottom: '1px solid rgba(124,58,237,0.2)', padding: 'clamp(12px,3vw,16px) clamp(16px,4vw,24px)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 20, position: 'relative' }}>
+      {/* Partner info */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ position: 'relative' }}>
+          <div style={{ width: 'clamp(36px,8vw,44px)', height: 'clamp(36px,8vw,44px)', borderRadius: '50%', background: 'linear-gradient(135deg,#7c3aed,#4f46e5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 'clamp(16px,4vw,20px)', fontWeight: 700 }}>
+            {partnerName?.[0]?.toUpperCase() || '?'}
+          </div>
+          {isOnline && !partnerLeft && (
+            <div style={{ position: 'absolute', bottom: 2, right: 2, width: 'clamp(8px,2vw,10px)', height: 'clamp(8px,2vw,10px)', background: '#22c55e', borderRadius: '50%', border: '2px solid #0a0a0f', animation: 'pulse 2s infinite' }} />
+          )}
+        </div>
+
+        <div>
+          <h2 style={{ fontSize: 'clamp(15px,4vw,17px)', fontWeight: 600, color: '#f0f0f0', marginBottom: 2, fontFamily: "'Georgia', serif" }}>
+            {partnerLeft ? `${partnerName} left` : partnerName}
+          </h2>
+          <p style={{ fontSize: 'clamp(11px,2.8vw,12px)', color: isTyping ? '#7c3aed' : '#60607a', fontStyle: 'italic' }}>
+            {partnerLeft ? 'Left the lobby' : isTyping ? 'typing...' : moodInfo ? `${moodInfo.emoji} ${moodInfo.label}` : 'Online'}
+          </p>
+        </div>
+      </div>
+
+      {/* Actions — gaming language */}
+      <div style={{ display: 'flex', gap: 'clamp(4px,2vw,8px)' }}>
+        <button onClick={onOpenSidebar} style={btn} title="Lobby info">ℹ️</button>
+        <button onClick={onReport}      style={btn} title="Report player">⚠️</button>
+        <button onClick={onEndChat}     style={{ ...btn, color: '#ef4444' }} title="Leave lobby">✕</button>
+      </div>
+
+      <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }`}</style>
+    </div>
+  )
+}
+
+const btn: React.CSSProperties = {
+  background: 'transparent',
+  border: '1px solid rgba(124,58,237,0.2)',
+  borderRadius: 8,
+  width: 'clamp(36px,8vw,40px)',
+  height: 'clamp(36px,8vw,40px)',
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+  cursor: 'pointer', fontSize: 'clamp(15px,4vw,17px)',
+  color: '#a0a0b0', transition: 'all 0.2s ease',
+}
